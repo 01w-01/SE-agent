@@ -1,0 +1,30 @@
+# Python virtual environments
+.venv/
+venv/
+
+# Python caches and build artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Local environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Local agent state
+.agents/
+
+# Local notes
+docs/temp.md
+
+# Windows
+Thumbs.db
+Desktop.ini
