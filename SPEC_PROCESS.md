@@ -216,4 +216,13 @@ brainstorming 主要推动了以下问题从模糊想法变成可验证决定：
 - 现有证据只能证明 Claude Code 的自定义模型识别与网关调用没有成功，不能据此否定用户已手动验证的 `/messages` 协议；
 - 三种最小修正假设均未得到成功响应，按 `systematic-debugging` 停止继续叠加开关；
 - Claude 尚未收到冷启动任务、没有读取 SPEC/PLAN、没有修改跟踪文件，因而不能伪造冷启动结果；
-- 下一步需由用户决定：改用非 bare 的 `ANTHROPIC_AUTH_TOKEN` 网关方式做一次新架构验证，或改用已安装的 Gemini CLI 作为不同类型智能体。
+- 后续依据 DeepSeek 官方 Claude Code 接入文档重新验证，确认此前结论需要修正，详见 10.4。
+
+### 10.4 官方配置复核与长任务限流
+
+- DeepSeek 官方方案的关键变量是 `ANTHROPIC_AUTH_TOKEN`，并直接通过 `ANTHROPIC_MODEL` 等环境变量选择模型；这与 `--bare` 只接受 `ANTHROPIC_API_KEY` 的限制不兼容；
+- Anthropic 客户端会在 Base URL 后追加 `/v1/messages`。学校给出的 `/v1` 适合 OpenAI 风格 Base URL，但 Claude Code 应使用学校域名根地址，避免形成重复的 `/v1/v1/messages`；
+- 使用一次性进程环境、`--safe-mode`、`--no-session-persistence` 和无工具模式，`deepseek-v4-pro[1m]`、`deepseek-v4-flash[1m]` 均完成最小连接；因此 Claude Code 接入已验证成功；
+- 随后仅提供 `SPEC.md`、`PLAN.md` 与 Task 2/5 指令，限制工具、禁止联网和 Git 写操作。第一次长请求约 221 秒后返回 `503`；降低推理强度后的第二次约 338 秒后明确返回系统容量限流；
+- 两次长任务都没有修改跟踪文件，尚未形成可评价的 Task 2/5 产出。当前门禁阻塞归因为学校网关容量，而不是本机安装、认证、URL、模型名或手动/自动启动方式；
+- 下一步是在低负载时按同一配置重试；若限流持续，再使用另一种陌生智能体执行相同 SPEC/PLAN 冷启动，不能把最小连通成功冒充为 Gate 2 完成。
