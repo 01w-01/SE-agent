@@ -584,7 +584,8 @@ git commit -m "feat: 定义 Harness 核心契约"
 
 **实现记录（2026-08-09）：** 实现提交 `901533a`；两轮独立评审后的修复提交
 `3f75989`、`37e28ee`。最终验证为模型测试 `59 passed`、全量测试 `65 passed`、
-Ruff 和 `git diff --check` 均通过；review/fix round 2 clean。PR 链接在创建后补录。
+Ruff 和 `git diff --check` 均通过；review/fix round 2 clean。PR：
+[PR #2](https://github.com/01w-01/SE-agent/pull/2)。
 
 ---
 
