@@ -164,6 +164,15 @@
 - 教训：正常路径全绿不能证明安全门禁 fail-closed；计划中的固定签名若没有负例，陌生实现者会用“方便测试”的默认值悄悄改变公共契约。
 - reviewer 二次只读复核确认职责划分合理，并要求测试与文字完全一致；已补精确错误码/固定摘要、完整 Action 必填负例、非字符串键/不支持对象代表负例及 Task 12 JSON 序列化边界。
 
+### 2026-08-09 · P-018 · 重启恢复与集中 PLAN 修订批准
+
+- Superpowers 技能：`using-superpowers`、`using-git-worktrees`、`systematic-debugging`；按既有冷启动流程恢复现场并验证条件。
+- 关键 prompt/context：用户要求电脑重启后先检查 Git、worktree 和未完成任务；若无影响，即视为批准集中修订后的 `PLAN.md`。
+- 恢复证据：`main=e09cb62`，`cold-start/claude-spec-plan=b04511a`；冷启动未提交文件清单与重启前一致；两处均无 Git 索引锁；无遗留 Claude/uv/Python 任务。
+- 验证输出：冷启动现状全量 pytest 为 `19 passed`，ruff 为 `All checks passed!`，正常路径凭据扫描退出 `0`。
+- 人工干预：恢复条件满足，用户的条件式批准正式生效；PLAN Gate 4 标记完成。批准不改变 Gate 2 未通过的结论，也不授权提交或合并试做代码。
+- 下一步：把批准证据同步到保留现场，在同一可舍弃 worktree 按新版测试执行 RED—GREEN 修复，再做独立复审。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |
