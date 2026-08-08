@@ -173,6 +173,16 @@
 - 人工干预：恢复条件满足，用户的条件式批准正式生效；PLAN Gate 4 标记完成。批准不改变 Gate 2 未通过的结论，也不授权提交或合并试做代码。
 - 下一步：把批准证据同步到保留现场，在同一可舍弃 worktree 按新版测试执行 RED—GREEN 修复，再做独立复审。
 
+### 2026-08-09 · P-019 · 冷启动 Gate 2 通过
+
+- Superpowers 技能：`executing-plans`、`test-driven-development`、`systematic-debugging`、`receiving-code-review`、`requesting-code-review`、`verification-before-completion`；完成冷启动修复、复现、重做 TDD 和独立复审。
+- Claude 第一轮结果：新增安全契约后从 19 项扩展到 37 项；主 Codex独立复验 pytest、ruff、正常扫描和非 Git 扫描均符合当时测试。
+- reviewer 第一轮结果：0 Critical、3 Important，分别为 Git executable 启动失败、空 payload 冻结绕过、其余 tuple/frozenset 字段未规范化；主 Codex逐项复现并判定为 PLAN 已有要求的实现偏离。
+- TDD 过程纠偏：第二次 Claude 在测试工具审批前写入生产修复，不能形成 RED 证据；保留新增测试、撤回该轮生产修改后，独立观察 1 个扫描失败和 11 个模型失败，再重新实现 GREEN。
+- 最终验证：`50 passed`、无 pytest warning、ruff 全绿；正常扫描退出 `0`；Git 真缺失时退出 `2`、stdout 空、stderr 固定。第三次 reviewer 报告 0 Critical、0 Important、0 Minor，Ready to proceed: Yes。
+- subagent/commit：`/root/cold_start_rereview` 仅做两轮只读复审，无文件修改；Claude 与主 Codex的冷启动试做保持未提交、未合并。正式过程文档 commit 在本轮完成。
+- 人工判断：Gate 2 标记完成；下一步按 PLAN 移除可舍弃 cold-start worktree。正式 Task 1 仍受“缺少 NJU Git/GitHub remote URL”门禁阻挡。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |
@@ -199,9 +209,9 @@
 | `receiving-code-review` | 已使用 | P-009，核对并落实用户第一轮 SPEC 审阅 |
 | `writing-plans` | 已使用 | P-010，依据已批准 SPEC 生成正式 PLAN |
 | `using-git-worktrees` | 已使用 | P-011，创建可舍弃的 Claude 冷启动 worktree；正式实现 worktree 尚未创建 |
-| `subagent-driven-development` / `executing-plans` | 未使用 | PLAN 已生成，但实现仍被冷启动门禁阻挡 |
-| `test-driven-development` | 未使用 | 实现尚未开始 |
-| `requesting-code-review` | 未使用 | 尚无实现 task 可评审 |
+| `subagent-driven-development` / `executing-plans` | 已部分使用 | `executing-plans` 已用于冷启动 Gate 2；正式 task 尚未开始 |
+| `test-driven-development` | 已使用 | 冷启动 Task 1/2 建立并纠正 RED—GREEN 证据 |
+| `requesting-code-review` | 已使用 | 冷启动 Task 1/2 经独立 reviewer 多轮复审至零问题 |
 | `finishing-a-development-branch` | 未使用 | 尚未进入收尾 |
 
 ## 5. 已知偏离与待解决冲突

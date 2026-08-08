@@ -165,7 +165,7 @@ Task 13 -> Task 14 最终门禁/发布
 
   使用非 Codex 类型的全新智能体会话，不导入本对话、memory 或 AGENT_LOG，只提供 `SPEC.md` 和 `PLAN.md`。
 
-- [ ] **Gate 2：在可舍弃 worktree 按依赖顺序试做 Task 1 和 Task 2**
+- [x] **Gate 2：在可舍弃 worktree 按依赖顺序试做 Task 1 和 Task 2**
 
   从当前基线开始先完成 Task 1 的红—绿—重构验证；只有 Task 1 全部绿色后才试做 Task 2。明确要求陌生智能体：“遇到不确定处立即暂停提问，不要猜测；不要提交或合并”。试做时间控制在 1–2 小时。Task 5 依赖 Task 2 与 Task 3，不纳入本门禁的实际编码试做；应在正式实现阶段等依赖合并后执行。
 
