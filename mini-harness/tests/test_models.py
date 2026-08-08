@@ -82,6 +82,40 @@ def test_action_non_empty_fields_allow_whitespace(
     assert getattr(action, field) == " "
 
 
+@pytest.mark.parametrize(
+    ("kind", "kwargs", "field"),
+    [
+        (ActionKind.READ_FILE, {"path": 1}, "path"),
+        (
+            ActionKind.EDIT_FILE,
+            {
+                "path": "src/a.py",
+                "expected_sha256": 1,
+                "old_text": "original",
+                "new_text": "replacement",
+            },
+            "expected_sha256",
+        ),
+        (
+            ActionKind.EDIT_FILE,
+            {
+                "path": "src/a.py",
+                "expected_sha256": "0" * 64,
+                "old_text": 1,
+                "new_text": "replacement",
+            },
+            "old_text",
+        ),
+        (ActionKind.FINISH, {"reason": 1}, "reason"),
+    ],
+)
+def test_action_non_empty_fields_reject_non_strings(
+    kind: ActionKind, kwargs: dict[str, object], field: str
+) -> None:
+    with pytest.raises(ModelValidationError, match=field):
+        Action(kind, **kwargs)  # type: ignore[arg-type]
+
+
 def test_run_request_rejects_blank_task() -> None:
     with pytest.raises(ModelValidationError, match="task"):
         RunRequest(Path("project"), " ", "https://example.test/v1", "model")
