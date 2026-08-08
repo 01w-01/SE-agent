@@ -264,3 +264,11 @@ brainstorming 主要推动了以下问题从模糊想法变成可验证决定：
 - 主 Codex 在保留现场上重新运行全量测试、ruff 和正常路径凭据扫描，结果仍为 `19 passed`、`All checks passed!`、扫描退出 `0`，证明重启没有破坏既有冷启动产物或验证环境；
 - 用户明确表示：若恢复检查无影响，即批准集中修订后的 `PLAN.md`。上述条件已满足，因此本轮将 Gate 4 标记完成，不再重复索取批准；
 - 该批准覆盖 `e09cb62` 中的 fail-closed 扫描、模型深度不可变、Action 必填字段、固定签名、Protocol 边界和 JSONL 转换边界。它不代表 Gate 2 已通过，也不授权提交或合并冷启动代码；下一步仍须让陌生 Claude 先观察新增测试失败，再修复并接受独立复审。
+
+### 10.9 集中修订复验与 Gate 2 完成
+
+- Claude 按批准版 PLAN 对第一轮 4 个 Important 问题补测试并修复，自报 37 项通过；主 Codex 独立得到 `37 passed`、ruff 通过、正常扫描退出 `0`、非 Git 目录扫描精确退出 `2` 且只输出固定摘要；
+- 独立 reviewer 继续发现 3 个 Important：真正找不到 Git executable 时仍泄露原生错误并退出 `1`；空/default payload 跳过冻结；除 ApprovalRequest 外的 tuple/frozenset 字段未防御规范化。主 Codex 逐项最小复现，并确认它们违反 PLAN 已有文字，而不是新需求；
+- 第二次 Claude 修复因内部 Bash 审批未能运行测试，却已经修改生产代码，因此不能冒充 TDD 完成。主 Codex按 `test-driven-development` 保留新增测试、撤回该轮生产修复，重新观察 Git 缺失测试 1 项失败、模型选择组 11 项失败/1 项既有行为通过，再重新应用最小修复；
+- 最终独立验证为 `50 passed` 且无 warning、ruff `All checks passed!`、正常扫描退出 `0`；PATH 仅含 PowerShell、Git 真缺失时退出 `2`、stdout 空、stderr 精确为 `secret scan failed`；
+- 同一 reviewer 第三次只读复核报告 0 Critical、0 Important、0 Minor，确认变更范围只含 Task 1/2、五个 Protocol 边界和全部不可变字段契约。Gate 2 至此完成；试做产物不提交、不合并，按计划删除可舍弃 worktree。
