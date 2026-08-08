@@ -696,7 +696,7 @@ git commit -m "feat: 添加声明式安全配置"
 - Consumes: `CredentialStore` Protocol、`InputError`。
 - Produces: `KeyringCredentialStore(service="fbw-harness", account="default")`，方法 `get/set/clear/status`。
 
-- [ ] **Step 1: 用 Fake keyring 写失败测试**
+- [x] **Step 1: 用 Fake keyring 写失败测试**
 
 ```python
 class FakeKeyring:
@@ -740,21 +740,21 @@ def test_keyring_error_does_not_include_secret() -> None:
     assert "temporary-value" not in str(error.value)
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `uv run --project mini-harness pytest mini-harness/tests/test_credentials.py -v`
 
 Expected: FAIL because credential implementation is absent.
 
-- [ ] **Step 3: 实现 keyring 适配器**
+- [x] **Step 3: 实现 keyring 适配器**
 
 调用 `keyring.get_password/set_password/delete_password`；空白 Key 抛 `InputError`；`delete_password` 的“凭据不存在”转换为 `False`；其他后端异常转换为不含原值的 `CredentialError`。
 
-- [ ] **Step 4: 验证真实后端的手动测试保持隔离**
+- [x] **Step 4: 验证真实后端的手动测试保持隔离**
 
 自动测试只使用 Fake，不写开发者 Credential Manager。创建 pytest marker `manual_windows`，默认测试集合不运行真实钥匙串；README 后续给出手动验证命令。
 
-- [ ] **Step 5: 运行测试、lint 并提交**
+- [x] **Step 5: 运行测试、lint 并提交**
 
 Run: `uv run --project mini-harness pytest mini-harness/tests/test_credentials.py -v`
 
@@ -766,6 +766,11 @@ Run: `uv run --project mini-harness ruff check mini-harness/src mini-harness/tes
 git add -- mini-harness/src/fbw_harness/credentials.py mini-harness/tests/test_credentials.py mini-harness/pyproject.toml
 git commit -m "feat: 添加安全凭据存储"
 ```
+
+**实现记录（2026-08-09）：** 实现提交 `4e7fdc0`；独立评审后的修复提交
+`1ec3d3f`。最终验证为凭据测试 `9 passed`、全量测试 `102 passed`、Ruff 和
+`git diff --check` 均通过；review/fix round 1 clean。`status()` 后端失败缺少直接
+测试记录为 deferred Minor，留待最终整分支审查。PR 链接在创建后补录。
 
 ---
 
