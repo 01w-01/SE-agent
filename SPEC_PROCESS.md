@@ -158,7 +158,7 @@ brainstorming 主要推动了以下问题从模糊想法变成可验证决定：
 
 - SPEC 批准：用户于 2026-08-08 明确回复“批准 SPEC”，`writing-plans` 门禁已解除。
 - PLAN 状态：已使用 Superpowers `writing-plans` 生成根目录 `PLAN.md`，正在完成正式文档提交。
-- 冷启动状态：尚未执行；SPEC 与 PLAN 已具备，提交后进入下一门禁。
+- 冷启动状态：已创建 Claude Code 隔离 worktree，但学校接口兼容配置尚未通过最小连通测试；Claude 尚未读取 SPEC/PLAN 或试做 task。
 - 既定执行协议：使用与 Codex 不同类型的全新智能体，不提供对话或 memory，只给 SPEC + PLAN；令其选 1–2 个 task，遇到不确定立即暂停。
 - 后续记录内容：智能体停顿点、错误解读、产出差距、缺陷归因，以及 SPEC/PLAN 修订前后的关键 diff。
 
@@ -189,3 +189,31 @@ brainstorming 主要推动了以下问题从模糊想法变成可验证决定：
 - F-01 至 F-12、六个 harness 维度、三项机制演示和 AC-01 至 AC-24 均有追踪映射；
 - 未发现未完成标记、占位内容或明文 Key 模式；
 - 修正了测试片段中的隐式 helper，并明确未知工具由 ActionParser 拒绝、合法动作的危险路径由 PolicyEngine 拒绝。
+
+## 10. 第一次陌生智能体冷启动尝试
+
+### 10.1 隔离与基线
+
+- 智能体类型：Claude Code 2.1.226，与主开发智能体 Codex 不同；
+- 隔离位置：`D:\Codes\FBW-worktrees\cold-start-claude`；
+- 分支：`cold-start/claude-spec-plan`，基于 `51a849d`；
+- worktree 仅由 uv 创建了被忽略的 `.venv`，Git 跟踪文件保持干净；
+- 基线能导入现有 `openai`，但旧原型尚未声明 pytest，因此 `python -m pytest` 以“No module named pytest”失败。这是 Task 1 将修复的已知起点，不是冷启动实现回归。
+
+### 10.2 Claude 接口配置验证
+
+用户指定学校 Anthropic 兼容 Base URL、临时 Key 和 `deepseek-v4-flash`。验证使用一次性进程环境、`--bare`、`--no-session-persistence` 和无工具模式，未把凭据写入文件或过程文档。
+
+依次验证：
+
+1. 直接把自定义模型名交给 Claude：被本地未知模型窗口校验拒绝；
+2. 按错误提示关闭未知模型窗口校验：越过本地校验后返回通用“selected model”不可用；
+3. 使用 Claude 原生 `sonnet` 槽位映射到学校模型：映射生效，但仍触发未知窗口校验；
+4. 同时使用原生映射和窗口校验关闭：仍返回通用模型不可用。
+
+### 10.3 当前结论与门禁
+
+- 现有证据只能证明 Claude Code 的自定义模型识别与网关调用没有成功，不能据此否定用户已手动验证的 `/messages` 协议；
+- 三种最小修正假设均未得到成功响应，按 `systematic-debugging` 停止继续叠加开关；
+- Claude 尚未收到冷启动任务、没有读取 SPEC/PLAN、没有修改跟踪文件，因而不能伪造冷启动结果；
+- 下一步需由用户决定：改用非 bare 的 `ANTHROPIC_AUTH_TOKEN` 网关方式做一次新架构验证，或改用已安装的 Gemini CLI 作为不同类型智能体。
