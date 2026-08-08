@@ -26,7 +26,10 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra"
+addopts = "-ra -m 'not manual_windows'"
+markers = [
+    "manual_windows: requires a real Windows Credential Manager backend",
+]
 
 [tool.ruff]
 target-version = "py313"
