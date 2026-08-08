@@ -237,6 +237,17 @@
 - 安全边界：不引入原生句柄遍历或新依赖；残余 TOCTOU 是已知限制，不作为已解决风险宣传。
 - 分支已推送；PR：[PR #5](https://github.com/01w-01/SE-agent/pull/5)。
 
+### 2026-08-10 · P-025 · 正式 Task 6 路径式文件事务与回滚
+
+- Superpowers 技能：`using-git-worktrees`、`subagent-driven-development`、`test-driven-development`、`receiving-code-review`、`requesting-code-review`、`verification-before-completion`。
+- worktree：`D:\Codes\FBW-worktrees\task-06`；分支 `task/06-transactions`，基线 `e161def`，基线测试 `164 passed`。
+- 首版：实现首次快照、同目录临时文件、flush/fsync/replace、并发哈希、commit 与逆序/部分回滚；提交 `c67d2ac feat: 添加文件事务与回滚`。
+- controller review：复现最终校验到 replace/unlink 的跨进程竞态（与路径式 PLAN 冲突），并发现恢复材料未验 hash、commit 部分清理后仍可写、目录 fsync 和运行期 reparse/身份复验缺口。
+- 用户裁决：选择 B，不实现平台 CAS/句柄事务；SPEC 新增 R-10，明确保留极窄跨进程 TOCTOU，不将其描述为已解决。
+- fix round 1：TDD 补恢复材料/结果双重 hash、commit-started 终态、平台目录 fsync、恢复目录链/身份复验和 dangling symlink 目录项检查；提交 `b4d7c1a fix: 补强路径式文件事务`。
+- 最终验证：事务 `49 passed`、全量 `213 passed`、Ruff、定向 format、累计 diff check 通过；controller scoped re-review 为 ALL_ADDRESSED。
+- 安全边界：只操作注入的 Workspace 与显式 recovery_root；不实现或宣称操作系统级跨进程条件更新。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |
