@@ -135,6 +135,17 @@
 - 安全边界：只允许 Task 1/2 文件、精确的旧原型删除、uv/pytest/ruff/扫描命令和只读 Git 检查；禁止 commit、merge、联网工具及工作区越界。
 - 人工干预：该批准不授权合并冷启动代码，也不解除正式实现阶段的独立 task/PR 流程。
 
+### 2026-08-09T01:20:00+08:00 · P-015 · 写入型冷启动发现 Windows Git 路径解码缺陷
+
+- Superpowers 技能：`using-superpowers`、`executing-plans`、`using-git-worktrees`、`test-driven-development`、`systematic-debugging`；因验证失败停止在 Task 1。
+- 关键 prompt/context：Claude 只执行已批准的 Task 1 → Task 2，允许精确删除旧原型和运行 uv/pytest/ruff/扫描，禁止 commit、merge、任意 PowerShell和越界。
+- 环境发现：第一次 Write/Edit/Glob/Grep 的 `EPERM` 来自 Codex 外层可写根不包含兄弟 worktree；在同一 Claude 白名单下授权外层访问后恢复，不是 PLAN 或 Claude 文件工具缺陷。
+- 产出：Task 1 文件已形成但未完成门禁；10 美元预算停止前未进入 Task 2。人工验证得到包版本测试通过、ruff 通过、凭据扫描测试因中文路径错误解码失败。
+- 缺陷核验：`git ls-files` 原始 UTF-8 字节被 `text=True` 按 Windows 默认代码页解码成乱码；实际文件存在且索引正常。PLAN 改用 `git ls-files -z` 和逐路径 UTF-8 严格解码。
+- subagent/commit：Claude Code 是冷启动陌生智能体；冷启动分支有未提交 Task 1 变更，main 仅记录文档修订，试做代码不合并。
+- 人工干预：Gate 4 因新 PLAN 缺陷重新打开，需用户批准后继续；未自行修改 Claude 产出的测试来绕过门禁。
+- 教训：Windows 优先不仅是运行平台声明，任何 subprocess 文本边界都必须明确编码；独立核验必须重跑完整命令，不能因 Claude 已生成文件就推断绿色。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |
