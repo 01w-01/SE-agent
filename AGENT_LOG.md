@@ -223,6 +223,7 @@
 - 最终验证：凭据 `9 passed`、全量 `102 passed`、Ruff 和累计 diff check 通过；scoped re-review 两项全部 ADDRESSED，无新 Critical / Important。
 - deferred Minor：`status()` 后端失败没有独立直接测试；其实现当前复用 `get()`，留待最终整分支审查统一裁决。
 - 安全边界：自动测试仅使用 Fake backend，未访问真实 Credential Manager；异常图、消息和 traceback 均不保留 Key 或 backend 原文。
+- 分支已推送；PR：[PR #4](https://github.com/01w-01/SE-agent/pull/4)。
 
 ## 3. 当前关键决定
 
