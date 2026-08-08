@@ -8,7 +8,12 @@ from types import SimpleNamespace
 import pytest
 
 from fbw_harness import transactions as transactions_module
-from fbw_harness.transactions import EditConflictError, FileTransaction, TransactionError
+from fbw_harness.transactions import (
+    EditConflictError,
+    FileTransaction,
+    RollbackError,
+    TransactionError,
+)
 from fbw_harness.workspace import PolicyDeniedError, Workspace
 
 
@@ -184,6 +189,75 @@ def test_original_snapshot_is_flushed_and_fsynced_before_editing_target(
     assert_no_exception_chain(caught.value)
 
 
+def test_supported_recovery_directory_fsync_failure_prevents_target_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Catches supported directory fsync failures being ignored after material creation."""
+    workspace, transaction, recovery_root = make_transaction(tmp_path)
+    original = workspace.read_file("a.py")
+    per_transaction_root = transaction_directory(recovery_root)
+    real_open = os.open
+    real_fsync = os.fsync
+    real_close = os.close
+    directory_fd = 987_654
+
+    def open_directory_or_real(
+        path: os.PathLike[str] | str, flags: int, *args: object, **kwargs: object
+    ) -> int:
+        if Path(path) == per_transaction_root:
+            return directory_fd
+        return real_open(path, flags, *args, **kwargs)  # type: ignore[arg-type]
+
+    def fail_directory_fsync(file_descriptor: int) -> None:
+        if file_descriptor == directory_fd:
+            raise OSError(r"sensitive C:\external\recovery-directory")
+        real_fsync(file_descriptor)
+
+    def close_directory_or_real(file_descriptor: int) -> None:
+        if file_descriptor != directory_fd:
+            real_close(file_descriptor)
+
+    monkeypatch.setattr(transactions_module, "_DIRECTORY_FSYNC_SUPPORTED", True, raising=False)
+    monkeypatch.setattr(transactions_module.os, "open", open_directory_or_real)
+    monkeypatch.setattr(transactions_module.os, "fsync", fail_directory_fsync)
+    monkeypatch.setattr(transactions_module.os, "close", close_directory_or_real)
+
+    with pytest.raises(TransactionError, match="directory could not be synchronized") as caught:
+        transaction.edit_file("a.py", original.sha256, "1", "2")
+
+    assert workspace.read_file("a.py") == original
+    assert transaction.touched_paths == ()
+    assert not any(per_transaction_root.iterdir())
+    assert "sensitive" not in str(caught.value)
+    assert_no_exception_chain(caught.value)
+
+
+def test_unsupported_windows_recovery_directory_fsync_is_a_noop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Catches the Windows no-op branch attempting an unsupported directory open."""
+    workspace, transaction, recovery_root = make_transaction(tmp_path)
+    original = workspace.read_file("a.py")
+    per_transaction_root = transaction_directory(recovery_root)
+    real_open = os.open
+
+    def reject_directory_open(
+        path: os.PathLike[str] | str, flags: int, *args: object, **kwargs: object
+    ) -> int:
+        if Path(path) == per_transaction_root:
+            raise AssertionError("Windows directory fsync must be skipped")
+        return real_open(path, flags, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(transactions_module, "_DIRECTORY_FSYNC_SUPPORTED", False, raising=False)
+    monkeypatch.setattr(transactions_module.os, "open", reject_directory_open)
+
+    edited = transaction.edit_file("a.py", original.sha256, "1", "2")
+
+    assert edited.text == "value = 2\n"
+    assert workspace.read_file("a.py") == edited
+    assert len(tuple(per_transaction_root.iterdir())) == 1
+
+
 def test_target_temp_is_flushed_and_fsynced_before_create_replace(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -201,6 +275,7 @@ def test_target_temp_is_flushed_and_fsynced_before_create_replace(
         assert os.fstat(file_descriptor).st_size == len(b"created = True\n")
         raise OSError("target temp fsync failed")
 
+    monkeypatch.setattr(transactions_module, "_DIRECTORY_FSYNC_SUPPORTED", False)
     monkeypatch.setattr(transactions_module.os, "fsync", fail_target_fsync)
 
     with pytest.raises(TransactionError, match="temporary file"):
@@ -258,6 +333,7 @@ def test_edit_rechecks_hash_after_temp_fsync_and_before_replace(
         if fsync_count == 2:
             (workspace.root / "a.py").write_bytes(b"value = external\n")
 
+    monkeypatch.setattr(transactions_module, "_DIRECTORY_FSYNC_SUPPORTED", False)
     monkeypatch.setattr(transactions_module.os, "fsync", change_target_after_temp_fsync)
 
     with pytest.raises(EditConflictError, match="hash"):
@@ -580,6 +656,123 @@ def test_rollback_does_not_delete_an_externally_modified_created_file(tmp_path: 
     assert len(tuple(per_transaction_root.iterdir())) == 1
 
 
+def test_rollback_rejects_corrupted_recovery_material_before_target_mutation(
+    tmp_path: Path,
+) -> None:
+    """Catches corrupted recovery bytes replacing a valid transaction target."""
+    workspace, transaction, recovery_root = make_transaction(tmp_path)
+    original = workspace.read_file("a.py")
+    edited = transaction.edit_file("a.py", original.sha256, "1", "2")
+    per_transaction_root = transaction_directory(recovery_root)
+    material = next(iter(per_transaction_root.iterdir()))
+    material.write_bytes(b"corrupted recovery bytes\n")
+
+    report = transaction.rollback()
+
+    assert report.complete is False
+    assert report.failed_paths == ("a.py",)
+    assert report.recovery_root == per_transaction_root
+    assert workspace.read_file("a.py") == edited
+    assert material.read_bytes() == b"corrupted recovery bytes\n"
+
+
+def test_rollback_verifies_restored_hash_before_deleting_material(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Catches rollback reporting success after the restored target changes again."""
+    workspace, transaction, recovery_root = make_transaction(tmp_path)
+    original = workspace.read_file("a.py")
+    transaction.edit_file("a.py", original.sha256, "1", "2")
+    per_transaction_root = transaction_directory(recovery_root)
+    material = next(iter(per_transaction_root.iterdir()))
+    real_replace = os.replace
+
+    def replace_then_change_target(
+        source: os.PathLike[str] | str, destination: os.PathLike[str] | str
+    ) -> None:
+        real_replace(source, destination)
+        Path(destination).write_bytes(b"external after restore\n")
+
+    monkeypatch.setattr(transactions_module.os, "replace", replace_then_change_target)
+
+    report = transaction.rollback()
+
+    assert report.complete is False
+    assert report.failed_paths == ("a.py",)
+    assert report.recovery_root == per_transaction_root
+    assert workspace.read_file("a.py").text == "external after restore\n"
+    assert material.read_bytes() == b"value = 1\n"
+
+
+def test_rollback_verifies_created_target_remains_absent_before_deleting_material(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Catches rollback reporting success after a removed created file is recreated."""
+    workspace, transaction, recovery_root = make_transaction(tmp_path)
+    transaction.create_file("new.py", "created = True\n")
+    target = workspace.root / "new.py"
+    per_transaction_root = transaction_directory(recovery_root)
+    material = next(iter(per_transaction_root.iterdir()))
+    real_unlink = Path.unlink
+
+    def unlink_then_recreate(path: Path, *, missing_ok: bool = False) -> None:
+        real_unlink(path, missing_ok=missing_ok)
+        if path == target:
+            path.write_bytes(b"external after removal\n")
+
+    monkeypatch.setattr(Path, "unlink", unlink_then_recreate)
+
+    report = transaction.rollback()
+
+    assert report.complete is False
+    assert report.failed_paths == ("new.py",)
+    assert report.recovery_root == per_transaction_root
+    assert workspace.read_file("new.py").text == "external after removal\n"
+    assert material.exists()
+
+
+def test_rollback_detects_a_dangling_entry_recreated_after_created_file_removal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Catches Path.exists treating a recreated dangling entry as safely absent."""
+    workspace, transaction, recovery_root = make_transaction(tmp_path)
+    transaction.create_file("new.py", "created = True\n")
+    target = workspace.root / "new.py"
+    missing_target = workspace.root / "missing-target.py"
+    per_transaction_root = transaction_directory(recovery_root)
+    material = next(iter(per_transaction_root.iterdir()))
+    real_unlink = Path.unlink
+    real_exists = Path.exists
+    simulate_dangling = False
+
+    def unlink_then_recreate_entry(path: Path, *, missing_ok: bool = False) -> None:
+        nonlocal simulate_dangling
+        real_unlink(path, missing_ok=missing_ok)
+        if path != target:
+            return
+        try:
+            path.symlink_to(missing_target)
+        except OSError:
+            path.write_bytes(b"simulated dangling entry")
+            simulate_dangling = True
+
+    def exists_with_dangling_semantics(path: Path) -> bool:
+        if simulate_dangling and path == target:
+            return False
+        return real_exists(path)
+
+    monkeypatch.setattr(Path, "unlink", unlink_then_recreate_entry)
+    monkeypatch.setattr(Path, "exists", exists_with_dangling_semantics)
+
+    report = transaction.rollback()
+
+    assert report.complete is False
+    assert report.failed_paths == ("new.py",)
+    assert report.recovery_root == per_transaction_root
+    assert os.path.lexists(target)
+    assert material.exists()
+
+
 def test_recovery_root_inside_workspace_is_rejected_before_creating_material(
     tmp_path: Path,
 ) -> None:
@@ -649,6 +842,116 @@ def test_recovery_root_inspection_error_is_redacted_without_exception_chain(
     assert not any(recovery_root.iterdir())
 
 
+def test_recovery_directory_replacement_is_rejected_before_material_write(
+    tmp_path: Path,
+) -> None:
+    """Catches first snapshots being written through a replaced transaction directory."""
+    workspace, transaction, recovery_root = make_transaction(tmp_path)
+    original = workspace.read_file("a.py")
+    per_transaction_root = transaction_directory(recovery_root)
+    displaced_root = recovery_root / "displaced-original"
+    per_transaction_root.rename(displaced_root)
+    per_transaction_root.mkdir()
+
+    with pytest.raises(TransactionError, match="recovery directory") as caught:
+        transaction.edit_file("a.py", original.sha256, "1", "2")
+
+    assert workspace.read_file("a.py") == original
+    assert transaction.touched_paths == ()
+    assert not any(per_transaction_root.iterdir())
+    assert not any(displaced_root.iterdir())
+    assert_no_exception_chain(caught.value)
+
+
+def test_recovery_directory_replacement_is_rejected_before_material_read(
+    tmp_path: Path,
+) -> None:
+    """Catches rollback trusting copied material in a replacement directory."""
+    workspace, transaction, recovery_root = make_transaction(tmp_path)
+    original = workspace.read_file("a.py")
+    edited = transaction.edit_file("a.py", original.sha256, "1", "2")
+    per_transaction_root = transaction_directory(recovery_root)
+    material = next(iter(per_transaction_root.iterdir()))
+    material_name = material.name
+    material_bytes = material.read_bytes()
+    displaced_root = recovery_root / "displaced-original"
+    per_transaction_root.rename(displaced_root)
+    per_transaction_root.mkdir()
+    (per_transaction_root / material_name).write_bytes(material_bytes)
+
+    report = transaction.rollback()
+
+    assert report.complete is False
+    assert report.failed_paths == ("a.py",)
+    assert report.recovery_root == per_transaction_root
+    assert workspace.read_file("a.py") == edited
+    assert (displaced_root / material_name).read_bytes() == b"value = 1\n"
+    assert (per_transaction_root / material_name).read_bytes() == b"value = 1\n"
+
+
+def test_recovery_directory_replacement_before_material_delete_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Catches a restored file being reported complete after its material directory changes."""
+    workspace, transaction, recovery_root = make_transaction(tmp_path)
+    original = workspace.read_file("a.py")
+    transaction.edit_file("a.py", original.sha256, "1", "2")
+    per_transaction_root = transaction_directory(recovery_root)
+    material_name = next(iter(per_transaction_root.iterdir())).name
+    displaced_root = recovery_root / "displaced-after-restore"
+    real_replace = os.replace
+
+    def replace_then_replace_recovery_directory(
+        source: os.PathLike[str] | str, destination: os.PathLike[str] | str
+    ) -> None:
+        real_replace(source, destination)
+        per_transaction_root.rename(displaced_root)
+        per_transaction_root.mkdir()
+
+    monkeypatch.setattr(transactions_module.os, "replace", replace_then_replace_recovery_directory)
+
+    report = transaction.rollback()
+
+    assert report.complete is False
+    assert report.failed_paths == ("a.py",)
+    assert report.recovery_root == per_transaction_root
+    assert workspace.read_file("a.py") == original
+    assert (displaced_root / material_name).read_bytes() == b"value = 1\n"
+    assert per_transaction_root.is_dir()
+
+
+def test_recovery_directory_reparse_is_rejected_before_commit_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Catches commit cleanup operating through a newly introduced reparse point."""
+    workspace, transaction, recovery_root = make_transaction(tmp_path)
+    original = workspace.read_file("a.py")
+    transaction.edit_file("a.py", original.sha256, "1", "2")
+    per_transaction_root = transaction_directory(recovery_root)
+    material = next(iter(per_transaction_root.iterdir()))
+    real_lstat = os.lstat
+
+    def lstat_with_reparse(path: os.PathLike[str] | str) -> os.stat_result | SimpleNamespace:
+        result = real_lstat(path)
+        if os.path.normcase(os.fspath(path)) == os.path.normcase(os.fspath(per_transaction_root)):
+            return SimpleNamespace(
+                st_mode=result.st_mode,
+                st_dev=result.st_dev,
+                st_ino=result.st_ino,
+                st_file_attributes=stat.FILE_ATTRIBUTE_REPARSE_POINT,
+            )
+        return result
+
+    monkeypatch.setattr(transactions_module.os, "lstat", lstat_with_reparse)
+
+    with pytest.raises(TransactionError, match="cleanup") as caught:
+        transaction.commit()
+
+    assert material.read_bytes() == b"value = 1\n"
+    assert per_transaction_root.is_dir()
+    assert_no_exception_chain(caught.value)
+
+
 def test_recovery_filename_does_not_include_user_path_text(tmp_path: Path) -> None:
     """Catches user-controlled path text becoming a recovery filename."""
     workspace, transaction, recovery_root = make_transaction(tmp_path)
@@ -693,6 +996,62 @@ def test_commit_cleanup_error_is_redacted_retains_material_and_can_retry(
     assert per_transaction_root.is_dir()
     assert "sensitive" not in str(caught.value)
     assert_no_exception_chain(caught.value)
+
+    transaction.commit()
+    transaction.commit()
+    assert not per_transaction_root.exists()
+
+
+@pytest.mark.parametrize("operation", ["create", "edit", "rollback"])
+def test_partially_cleaned_commit_allows_only_idempotent_commit_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    """Catches writes or rollback after commit has irreversibly deleted some material."""
+    workspace_root = tmp_path / "project"
+    workspace_root.mkdir()
+    (workspace_root / "a.py").write_bytes(b"a = 1\n")
+    (workspace_root / "b.py").write_bytes(b"b = 1\n")
+    workspace = Workspace(workspace_root)
+    recovery_root = tmp_path / "recovery"
+    transaction = FileTransaction(workspace, recovery_root)
+    original_a = workspace.read_file("a.py")
+    original_b = workspace.read_file("b.py")
+    edited_a = transaction.edit_file("a.py", original_a.sha256, "1", "2")
+    edited_b = transaction.edit_file("b.py", original_b.sha256, "1", "2")
+    per_transaction_root = transaction_directory(recovery_root)
+    real_unlink = Path.unlink
+    deleted_materials = 0
+
+    def fail_second_material_unlink(path: Path, *, missing_ok: bool = False) -> None:
+        nonlocal deleted_materials
+        if path.parent == per_transaction_root:
+            if deleted_materials == 1:
+                raise OSError("second recovery material cleanup failed")
+            real_unlink(path, missing_ok=missing_ok)
+            deleted_materials += 1
+            return
+        real_unlink(path, missing_ok=missing_ok)
+
+    with monkeypatch.context() as cleanup_patch:
+        cleanup_patch.setattr(Path, "unlink", fail_second_material_unlink)
+        with pytest.raises(TransactionError, match="cleanup"):
+            transaction.commit()
+
+    assert len(tuple(per_transaction_root.iterdir())) == 1
+    before_a = workspace.read_file("a.py")
+    error_type = RollbackError if operation == "rollback" else TransactionError
+    with pytest.raises(error_type, match="commit is already in progress"):
+        if operation == "create":
+            transaction.create_file("late.py", "late = True\n")
+        elif operation == "edit":
+            transaction.edit_file("a.py", before_a.sha256, "2", "9")
+        else:
+            transaction.rollback()
+
+    assert workspace.read_file("a.py") == edited_a
+    assert workspace.read_file("b.py") == edited_b
+    assert not (workspace.root / "late.py").exists()
+    assert len(tuple(per_transaction_root.iterdir())) == 1
 
     transaction.commit()
     transaction.commit()

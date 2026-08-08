@@ -12,6 +12,8 @@ from .errors import HarnessError
 from .models import TransactionRecord
 from .workspace import FileSnapshot, Workspace
 
+_DIRECTORY_FSYNC_SUPPORTED = os.name != "nt"
+
 
 class TransactionError(HarnessError):
     """A file transaction could not safely complete an operation."""
@@ -59,10 +61,12 @@ class FileTransaction:
             raise TransactionError("transaction recovery directory could not be created")
         self._transaction_root = Path(child)
         _reject_reparse_chain(self._transaction_root)
+        self._transaction_identity = _directory_identity(self._transaction_root)
         self._records: dict[str, TransactionRecord] = {}
         self._written_hashes: dict[str, str] = {}
         self._touch_order: list[str] = []
         self._complete = False
+        self._commit_started = False
         self._rollback_started = False
         self._rolled_back = False
 
@@ -125,6 +129,7 @@ class FileTransaction:
             return
         if self._rollback_started:
             raise TransactionError("transaction rollback is already in progress")
+        self._commit_started = True
         if not self._remove_recovery_tree():
             raise TransactionError("transaction recovery cleanup failed")
         self._complete = True
@@ -132,18 +137,21 @@ class FileTransaction:
     def rollback(self) -> RollbackReport:
         if self._rolled_back:
             return RollbackReport(complete=True)
+        if self._commit_started:
+            raise RollbackError("transaction commit is already in progress")
         self._rollback_started = True
         failed: list[str] = []
         for relative in reversed(self._touch_order):
             record = self._records[relative]
             if record.recovered:
                 continue
-            if not self._restore_record(record):
+            if not self._restore_record(record) or not self._remove_recovery_material(
+                record.recovery_path
+            ):
                 failed.append(relative)
             else:
                 self._records[relative] = replace(record, recovered=True)
                 self._written_hashes.pop(relative, None)
-                self._remove_file_best_effort(record.recovery_path)
         if failed:
             return RollbackReport(
                 complete=False,
@@ -164,6 +172,8 @@ class FileTransaction:
             raise TransactionError("transaction is already complete")
         if self._rollback_started:
             raise TransactionError("transaction rollback is already in progress")
+        if self._commit_started:
+            raise TransactionError("transaction commit is already in progress")
 
     def _restore_record(self, record: TransactionRecord) -> bool:
         expected_sha256 = self._written_hashes.get(record.relative_path)
@@ -179,6 +189,15 @@ class FileTransaction:
             return False
 
         if record.originally_existed:
+            if record.original_sha256 is None:
+                return False
+            material_validation_failed = False
+            try:
+                self._validate_recovery_material(record.recovery_path)
+            except TransactionError:
+                material_validation_failed = True
+            if material_validation_failed:
+                return False
             read_failed = False
             try:
                 payload = record.recovery_path.read_bytes()
@@ -187,6 +206,22 @@ class FileTransaction:
                 payload = b""
             if read_failed:
                 return False
+            if hashlib.sha256(payload).hexdigest() != record.original_sha256:
+                return False
+
+            current_read_failed = False
+            try:
+                current = self._workspace.read_file(record.relative_path)
+            except HarnessError:
+                current_read_failed = True
+                current = None
+            if current_read_failed or current is None:
+                return False
+            if current.sha256 == record.original_sha256:
+                return True
+            if current.sha256 != expected_sha256:
+                return False
+
             replace_failed = False
             try:
                 self._atomic_replace(
@@ -198,16 +233,30 @@ class FileTransaction:
                 )
             except HarnessError:
                 replace_failed = True
-            return not replace_failed
+            if replace_failed:
+                return False
+            verification_failed = False
+            try:
+                restored = self._workspace.read_file(record.relative_path)
+            except HarnessError:
+                verification_failed = True
+                restored = None
+            return (
+                not verification_failed
+                and restored is not None
+                and restored.sha256 == record.original_sha256
+            )
 
         removal_failed = False
         try:
-            exists = self._target_exists(target)
+            exists = self._target_entry_exists(target)
             if exists:
                 current = self._workspace.read_file(record.relative_path)
                 if current.sha256 != expected_sha256:
                     return False
                 target.unlink()
+            if self._target_entry_exists(target):
+                return False
         except (HarnessError, OSError):
             removal_failed = True
         return not removal_failed
@@ -227,6 +276,7 @@ class FileTransaction:
         )
         recovery_path = self._transaction_root / material_name
         payload = b"" if snapshot is None else snapshot.text.encode("utf-8")
+        self._validate_transaction_root()
         recovery_failed = False
         try:
             with recovery_path.open("xb") as stream:
@@ -236,8 +286,13 @@ class FileTransaction:
         except OSError:
             recovery_failed = True
         if recovery_failed:
-            self._remove_file_best_effort(recovery_path)
+            self._remove_recovery_material(recovery_path, must_exist=False)
             raise TransactionError("recovery material could not be written")
+        try:
+            self._fsync_recovery_directory()
+        except TransactionError:
+            self._remove_recovery_material(recovery_path)
+            raise
         record = TransactionRecord(
             relative_path=normalized,
             originally_existed=snapshot is not None,
@@ -248,11 +303,35 @@ class FileTransaction:
         self._touch_order.append(normalized)
         return record
 
+    def _fsync_recovery_directory(self) -> None:
+        self._validate_transaction_root()
+        if not _DIRECTORY_FSYNC_SUPPORTED:
+            return
+
+        directory_fd: int | None = None
+        synchronization_failed = False
+        try:
+            flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+            directory_fd = os.open(self._transaction_root, flags)
+        except OSError:
+            synchronization_failed = True
+        if not synchronization_failed and directory_fd is not None:
+            try:
+                os.fsync(directory_fd)
+            except OSError:
+                synchronization_failed = True
+            try:
+                os.close(directory_fd)
+            except OSError:
+                synchronization_failed = True
+        if synchronization_failed:
+            raise TransactionError("recovery directory could not be synchronized")
+
     def _discard_record(self, record: TransactionRecord) -> None:
         self._records.pop(record.relative_path, None)
         self._written_hashes.pop(record.relative_path, None)
         self._touch_order.remove(record.relative_path)
-        self._remove_file_best_effort(record.recovery_path)
+        self._remove_recovery_material(record.recovery_path)
 
     def _encode_text(self, text: str) -> bytes:
         invalid = not isinstance(text, str)
@@ -338,6 +417,19 @@ class FileTransaction:
         return exists
 
     @staticmethod
+    def _target_entry_exists(target: Path) -> bool:
+        inspection_failed = False
+        try:
+            os.lstat(target)
+        except FileNotFoundError:
+            return False
+        except OSError:
+            inspection_failed = True
+        if inspection_failed:
+            raise TransactionError("transaction target could not be inspected")
+        return True
+
+    @staticmethod
     def _remove_file_best_effort(path: Path) -> None:
         try:
             path.unlink(missing_ok=True)
@@ -351,27 +443,88 @@ class FileTransaction:
         except OSError:
             pass
 
+    def _validate_transaction_root(self) -> None:
+        if _same_path(self._recovery_root, self._transaction_root) or not _is_within(
+            self._recovery_root, self._transaction_root
+        ):
+            raise TransactionError("transaction recovery directory escapes its configured root")
+        _reject_reparse_chain(self._transaction_root)
+        if _directory_identity(self._transaction_root) != self._transaction_identity:
+            raise TransactionError("transaction recovery directory identity changed")
+
+    def _validate_recovery_material(self, path: Path, *, must_exist: bool = True) -> None:
+        self._validate_transaction_root()
+        if not _same_path(path.parent, self._transaction_root) or not _is_within(
+            self._transaction_root, path
+        ):
+            raise TransactionError("recovery material escapes its transaction directory")
+        _reject_reparse_chain(path)
+
+        inspection_failed = False
+        missing = False
+        try:
+            metadata = os.lstat(path)
+        except FileNotFoundError:
+            missing = True
+            metadata = None
+        except OSError:
+            inspection_failed = True
+            metadata = None
+        if inspection_failed:
+            raise TransactionError("recovery material cannot be inspected safely")
+        if missing:
+            if must_exist:
+                raise TransactionError("recovery material does not exist")
+            return
+        assert metadata is not None
+        attributes = getattr(metadata, "st_file_attributes", 0)
+        if not stat.S_ISREG(metadata.st_mode) or attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+            raise TransactionError("recovery material is not a safe regular file")
+
+    def _remove_recovery_material(self, path: Path, *, must_exist: bool = True) -> bool:
+        validation_failed = False
+        try:
+            self._validate_recovery_material(path, must_exist=must_exist)
+        except TransactionError:
+            validation_failed = True
+        if validation_failed:
+            return False
+
+        removal_failed = False
+        try:
+            path.unlink(missing_ok=not must_exist)
+        except OSError:
+            removal_failed = True
+        return not removal_failed
+
     def _remove_recovery_tree(self) -> bool:
+        validation_failed = False
+        try:
+            self._validate_transaction_root()
+        except TransactionError:
+            validation_failed = True
+        if validation_failed:
+            return False
+
         cleanup_failed = False
         try:
             children = tuple(self._transaction_root.iterdir())
-        except FileNotFoundError:
-            return True
         except OSError:
             cleanup_failed = True
             children = ()
         if not cleanup_failed:
             for child in children:
-                try:
-                    child.unlink()
-                except OSError:
+                if not self._remove_recovery_material(child):
                     cleanup_failed = True
                     break
         if not cleanup_failed:
             try:
+                self._validate_transaction_root()
+            except TransactionError:
+                cleanup_failed = True
+        if not cleanup_failed:
+            try:
                 self._transaction_root.rmdir()
-            except FileNotFoundError:
-                return True
             except OSError:
                 cleanup_failed = True
         return not cleanup_failed
@@ -385,6 +538,25 @@ def _is_within(root: Path, target: Path) -> bool:
     except ValueError:
         return False
     return os.path.normcase(common) == root_text
+
+
+def _same_path(left: Path, right: Path) -> bool:
+    return os.path.normcase(os.path.abspath(left)) == os.path.normcase(os.path.abspath(right))
+
+
+def _directory_identity(path: Path) -> tuple[int, int]:
+    inspection_failed = False
+    try:
+        metadata = os.lstat(path)
+    except OSError:
+        inspection_failed = True
+        metadata = None
+    if inspection_failed or metadata is None:
+        raise TransactionError("transaction recovery directory cannot be inspected safely")
+    attributes = getattr(metadata, "st_file_attributes", 0)
+    if not stat.S_ISDIR(metadata.st_mode) or attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+        raise TransactionError("transaction recovery directory is not a safe directory")
+    return metadata.st_dev, metadata.st_ino
 
 
 def _reject_reparse_chain(path: Path) -> None:
