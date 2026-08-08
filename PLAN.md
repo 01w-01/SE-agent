@@ -770,7 +770,8 @@ git commit -m "feat: 添加安全凭据存储"
 **实现记录（2026-08-09）：** 实现提交 `4e7fdc0`；独立评审后的修复提交
 `1ec3d3f`。最终验证为凭据测试 `9 passed`、全量测试 `102 passed`、Ruff 和
 `git diff --check` 均通过；review/fix round 1 clean。`status()` 后端失败缺少直接
-测试记录为 deferred Minor，留待最终整分支审查。PR 链接在创建后补录。
+测试记录为 deferred Minor，留待最终整分支审查。PR：
+[PR #4](https://github.com/01w-01/SE-agent/pull/4)。
 
 ---
 
