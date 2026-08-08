@@ -81,11 +81,21 @@
 - 人工干预：用户纠正项目定位，并明确要求不重写 Git 历史、不做 WebUI、继续 `main`。
 - 教训：仓库生命周期与工程流程严肃性是两个不同维度；“以后可能重做”不能被解释为省略正式要求。
 
+### 2026-08-08T23:03:58+08:00 · P-009 · 处理第一轮 SPEC 审阅
+
+- Superpowers 技能：`using-superpowers`、`brainstorming`、`receiving-code-review`；明确未调用 `writing-plans`。
+- 关键 prompt/context：首版保持纯 CLI，但结构允许未来增加 WebUI；临时 Key 历史保持不动且当前不公开；解释并重新决定 main/worktree/PR。
+- 输出：将 CLI 收敛为入口适配器，增加 ApplicationService、EventSink、ApprovalProvider 边界；更新凭据风险状态和编码阶段 Git 工作流。
+- subagent/commit：未使用 subagent；基于 `b5f3d72` 修订正式文档。
+- 人工干预：用户接受当前私有阶段 Key 风险；决定现有历史不动，从正式编码开始使用 branch + worktree + PR。
+- 教训：为未来扩展预留的是稳定接口和依赖方向，不是空目录或无行为占位代码；文档阶段直接提交 main 不必强迫未来编码继续偏离课程流程。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |
 |---|---|---|
-| Python + uv，Windows 优先，纯 CLI | 用户选择 | 已写入 SPEC |
+| Python + uv，Windows 优先，首版纯 CLI | 用户选择 | 已写入 SPEC |
+| CLI 仅为适配器，核心允许未来接 WebUI | 用户要求、AI 细化 | 已写入 SPEC |
 | 模块化同步单进程状态机 | AI 推荐、用户采纳 | 已写入 SPEC |
 | 反馈闭环为重点，pytest 为主信号 | 共同收敛 | 已写入 SPEC |
 | 真实 CLI + Mock LLM 共用内核 | AI 修正、用户采纳 | 已写入 SPEC |
@@ -93,16 +103,17 @@
 | 禁止任意 PowerShell、删除、越界 | 用户要求 | 已写入 SPEC |
 | 直接修改、逐文件事务和失败回滚 | 用户选择、共同细化 | 已写入 SPEC |
 | Credential Manager 存储 Key | AI 依据课程要求推荐 | 待用户随 SPEC 审阅 |
-| 继续在 `main`，不新建分支 | 用户决定 | 有意流程偏离 |
-| 不实现 WebUI | 用户决定 | 与课程最终清单冲突 |
-| 不自行重写含 Key 的 Git 历史 | 用户限制 | 公开发布阻断项 |
+| 现有历史留在 `main`；编码阶段 branch + worktree + PR | 用户决定 | 此前流程偏离已解决 |
+| 首版不实现 WebUI，但保留入口扩展边界 | 用户决定 | 仍与课程最终清单冲突 |
+| 不自行重写含 Key 的 Git 历史 | 用户接受当前风险 | 仅在公开发布/正式提交时阻断 |
 
 ## 4. Superpowers 技能使用状态
 
 | 技能 | 使用情况 | 证据/说明 |
 |---|---|---|
 | `using-superpowers` | 已使用 | 会话开始和正式定位修订时核对技能流程 |
-| `brainstorming` | 已使用 | P-001 至 P-008，产出设计依据和正式 SPEC |
+| `brainstorming` | 已使用 | P-001 至 P-009，产出设计依据并迭代正式 SPEC |
+| `receiving-code-review` | 已使用 | P-009，核对并落实用户第一轮 SPEC 审阅 |
 | `writing-plans` | 未使用 | 等待用户批准 SPEC 的强制门禁 |
 | `using-git-worktrees` | 未使用 | 尚未进入实现；且当前用户决定 main 推进 |
 | `subagent-driven-development` / `executing-plans` | 未使用 | PLAN 尚未生成 |
@@ -115,20 +126,20 @@
 ### D-01 · WebUI
 
 - 课程要求：最终提供可访问 WebUI。
-- 当前决定：纯 CLI，不做 WebUI。
-- 处理：如实记录，当前不得声称完全合规；后续需用户或课程方作最终裁决。
+- 当前决定：首版纯 CLI；CLIAdapter 与核心解耦，未来可增加 WebUIAdapter。
+- 处理：不创建无行为占位代码；如实记录“可扩展”仍不等于已交付 WebUI，后续需用户或课程方作最终裁决。
 
 ### D-02 · 凭据已进入历史
 
 - 课程要求：源码、日志、配置和 Git 历史均不得含 Key。
 - 当前事实：`77da924` 已包含学校临时 Key。
-- 处理：不在新文档重复 Key；公开发布前必须轮换/撤销、移除当前树、经用户授权重写历史并全历史复扫。当前禁止智能体自行重写。
+- 处理：用户接受当前私有开发风险，不在新文档重复 Key，也不重写现有历史；公开发布/正式提交时凭据扫描仍会失败，届时如实报告而不绕过门禁。
 
 ### D-03 · 分支、worktree 与 PR
 
 - 课程要求：按 worktree/subagent/PR 流程保留过程证据。
-- 当前决定：本仓继续在 `main`，不建新分支。
-- 处理：记录为有意偏离；进入实现计划前再次暴露其评分风险，但不擅自改变。
+- 当前决定：现有文档历史保留在 `main`；正式编码开始采用 branch + worktree + PR。
+- 处理：此前偏离已解决；待 SPEC、PLAN 和冷启动门禁完成后，由 `using-git-worktrees` 创建首个实现 worktree。
 
 ### D-04 · 探索定位
 
@@ -142,5 +153,6 @@
 |---|---|---|
 | `77da924 init` | 初始文件与旧原型 | 建立基线，同时引入凭据历史冲突 |
 | `b773647 docs: 添加 Coding Agent Harness demo 设计` | brainstorming 设计依据 | 不是正式 SPEC |
+| `b5f3d72 docs: 补齐正式课程规约与过程记录` | 正式 SPEC 与过程记录初版 | 进入用户书面审阅门禁 |
 
 后续正式文档提交完成后，应在本表新增其 commit；实现阶段每个 PLAN task 还需记录 task、技能、subagent、人工修改和验证证据。
