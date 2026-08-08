@@ -235,6 +235,7 @@
 - fix round 1：按 TDD 增加完整链检查、scandir 前复查、保护集合、1,000 返回/10,000 扫描上限、path/opened/post 状态比较和异常链脱敏；提交 `830a2a7 fix: 补强路径式工作区围栏`。
 - 最终验证：工作区 `62 passed`、全量 `164 passed`、Ruff、format、累计 diff check 通过；scoped re-review 全部 ADDRESSED，无新 Critical / Important。
 - 安全边界：不引入原生句柄遍历或新依赖；残余 TOCTOU 是已知限制，不作为已解决风险宣传。
+- 分支已推送；PR：[PR #5](https://github.com/01w-01/SE-agent/pull/5)。
 
 ## 3. 当前关键决定
 
