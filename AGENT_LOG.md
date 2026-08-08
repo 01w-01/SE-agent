@@ -225,6 +225,17 @@
 - 安全边界：自动测试仅使用 Fake backend，未访问真实 Credential Manager；异常图、消息和 traceback 均不保留 Key 或 backend 原文。
 - 分支已推送；PR：[PR #4](https://github.com/01w-01/SE-agent/pull/4)。
 
+### 2026-08-09 · P-024 · 正式 Task 5 路径式工作区围栏
+
+- Superpowers 技能：`using-git-worktrees`、`subagent-driven-development`、`test-driven-development`、`receiving-code-review`、`writing-plans`、`requesting-code-review`、`verification-before-completion`。
+- worktree：`D:\Codes\FBW-worktrees\task-05`；分支 `task/05-workspace-fence`，基线 `a71fa61`，基线测试 `102 passed`。
+- 首版：实现路径规范化、commonpath、重解析点、保护段、有界 UTF-8 读取和 SHA-256，提交 `d69365d feat: 添加工作区安全围栏`；定向 `24 passed`、全量 `126 passed`。
+- review：有效审查报告指出路径式 stat/open 与 scandir 的残余竞态、检查顺序/root 链、保护范围和发现上限问题；首次 reviewer 请求被平台误判后以本地文件 API 正确性描述重试，没有修改代码。
+- 用户裁决：在 PLAN 与 Windows 原生句柄级建议冲突时选择 B，保留路径式围栏；SPEC 新增 R-09，明确不把应用层围栏描述为抵御同用户恶意并发替换的操作系统沙箱。
+- fix round 1：按 TDD 增加完整链检查、scandir 前复查、保护集合、1,000 返回/10,000 扫描上限、path/opened/post 状态比较和异常链脱敏；提交 `830a2a7 fix: 补强路径式工作区围栏`。
+- 最终验证：工作区 `62 passed`、全量 `164 passed`、Ruff、format、累计 diff check 通过；scoped re-review 全部 ADDRESSED，无新 Critical / Important。
+- 安全边界：不引入原生句柄遍历或新依赖；残余 TOCTOU 是已知限制，不作为已解决风险宣传。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |
