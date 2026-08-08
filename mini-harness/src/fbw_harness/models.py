@@ -73,6 +73,11 @@ def _require_non_blank(value: object, field_name: str) -> None:
         raise ModelValidationError(f"{field_name} must be a non-blank string")
 
 
+def _require_non_empty(value: object, field_name: str) -> None:
+    if value is None or value == "":
+        raise ModelValidationError(f"{field_name} must be non-empty")
+
+
 class ActionKind(str, Enum):
     LIST_FILES = "list_files"
     READ_FILE = "read_file"
@@ -126,16 +131,16 @@ class Action:
 
     def __post_init__(self) -> None:
         if self.kind in {ActionKind.READ_FILE, ActionKind.CREATE_FILE, ActionKind.EDIT_FILE}:
-            _require_non_blank(self.path, "path")
+            _require_non_empty(self.path, "path")
         if self.kind is ActionKind.CREATE_FILE and self.content is None:
             raise ModelValidationError("content is required for create_file")
         if self.kind is ActionKind.EDIT_FILE:
-            _require_non_blank(self.expected_sha256, "expected_sha256")
-            _require_non_blank(self.old_text, "old_text")
+            _require_non_empty(self.expected_sha256, "expected_sha256")
+            _require_non_empty(self.old_text, "old_text")
             if self.new_text is None:
                 raise ModelValidationError("new_text is required for edit_file")
         if self.kind is ActionKind.FINISH:
-            _require_non_blank(self.reason, "reason")
+            _require_non_empty(self.reason, "reason")
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, fields
 from pathlib import Path
 
 import pytest
@@ -12,9 +12,11 @@ from fbw_harness.models import (
     ApprovalRequest,
     Feedback,
     FeedbackKind,
+    Observation,
     PolicyContext,
     PolicyDecision,
     PolicyLevel,
+    ProjectMemory,
     RawDecision,
     RawToolCall,
     RunEvent,
@@ -22,6 +24,7 @@ from fbw_harness.models import (
     RunResult,
     RunStatus,
     SessionState,
+    TransactionRecord,
 )
 from fbw_harness.models import TestResult as HarnessTestResult
 from fbw_harness.ports import (
@@ -43,6 +46,40 @@ def test_edit_action_requires_non_empty_hash(expected_sha256: str | None) -> Non
             old_text="x",
             new_text="y",
         )
+
+
+@pytest.mark.parametrize(
+    ("kind", "kwargs", "field"),
+    [
+        (ActionKind.READ_FILE, {"path": " "}, "path"),
+        (
+            ActionKind.EDIT_FILE,
+            {
+                "path": "src/a.py",
+                "expected_sha256": " ",
+                "old_text": "original",
+                "new_text": "replacement",
+            },
+            "expected_sha256",
+        ),
+        (
+            ActionKind.EDIT_FILE,
+            {
+                "path": "src/a.py",
+                "expected_sha256": "0" * 64,
+                "old_text": " ",
+                "new_text": "replacement",
+            },
+            "old_text",
+        ),
+        (ActionKind.FINISH, {"reason": " "}, "reason"),
+    ],
+)
+def test_action_non_empty_fields_allow_whitespace(
+    kind: ActionKind, kwargs: dict[str, object], field: str
+) -> None:
+    action = Action(kind, **kwargs)  # type: ignore[arg-type]
+    assert getattr(action, field) == " "
 
 
 def test_run_request_rejects_blank_task() -> None:
@@ -102,6 +139,16 @@ def test_recursive_container_is_rejected_without_recursion_error() -> None:
     recursive["self"] = recursive
     with pytest.raises(ModelValidationError, match="recursive"):
         RunEvent("run-1", "state", "start", recursive)
+
+
+def test_shared_non_recursive_mapping_is_frozen_without_false_cycle_detection() -> None:
+    shared = {"summary": "ok"}
+    source = {"left": shared, "right": shared}
+    event = RunEvent("run-1", "state", "start", source)
+    shared["summary"] = "mutated"
+
+    assert event.payload["left"]["summary"] == "ok"  # type: ignore[index]
+    assert event.payload["right"]["summary"] == "ok"  # type: ignore[index]
 
 
 def test_non_string_mapping_key_and_unsupported_object_are_rejected() -> None:
@@ -237,6 +284,113 @@ def test_external_models_are_frozen_but_session_state_is_mutable() -> None:
 def test_session_state_normalizes_touched_files() -> None:
     state = SessionState("run-1", touched_files=["src/a.py"])  # type: ignore[arg-type]
     assert state.touched_files == ("src/a.py",)
+
+
+@pytest.mark.parametrize(
+    ("model", "expected_fields"),
+    [
+        (
+            Action(ActionKind.LIST_FILES),
+            ("kind", "path", "expected_sha256", "old_text", "new_text", "content", "reason"),
+        ),
+        (
+            PolicyContext(),
+            ("dirty_paths", "changed_line_count", "dangerous_capabilities"),
+        ),
+        (PolicyDecision(PolicyLevel.ALLOW, "R01", "reason"), ("level", "rule_id", "reason", "risk_facts")),
+        (
+            Observation("action", True, "ok"),
+            ("kind", "success", "summary", "exit_code", "output_tail"),
+        ),
+        (
+            Feedback(FeedbackKind.PASSED, True, 0, "ok"),
+            (
+                "kind",
+                "passed",
+                "exit_code",
+                "summary",
+                "failed_tests",
+                "output_tail",
+                "fingerprint",
+            ),
+        ),
+        (
+            HarnessTestResult(True, 0, "", "", 0.1),
+            (
+                "passed",
+                "exit_code",
+                "stdout",
+                "stderr",
+                "duration_seconds",
+                "timed_out",
+                "failed_tests",
+            ),
+        ),
+        (
+            TransactionRecord("src/a.py", True, None, Path("recovery")),
+            (
+                "relative_path",
+                "originally_existed",
+                "original_sha256",
+                "recovery_path",
+                "recovered",
+            ),
+        ),
+        (
+            ProjectMemory(),
+            ("version", "project_notes", "last_success_summary", "updated_at"),
+        ),
+        (
+            RunRequest(Path("project"), "task", "https://example.test/v1", "model"),
+            ("workspace", "task", "base_url", "model", "config_path", "config_overrides"),
+        ),
+        (RunEvent("run-1", "state", "start"), ("run_id", "kind", "stage", "payload")),
+        (
+            ApprovalRequest("R01", "reason"),
+            ("rule_id", "reason", "risk_facts", "affected_paths"),
+        ),
+        (RawToolCall("action", "{}"), ("name", "arguments")),
+        (RawDecision(()), ("tool_calls", "content")),
+        (
+            RunResult(RunStatus.COMPLETED, "done", 0, 1, (), True, True, None),
+            (
+                "status",
+                "stop_reason",
+                "exit_code",
+                "round_count",
+                "touched_files",
+                "last_test_passed",
+                "rollback_complete",
+                "recovery_path",
+            ),
+        ),
+    ],
+)
+def test_fixed_models_have_exact_fields_and_are_frozen(
+    model: object, expected_fields: tuple[str, ...]
+) -> None:
+    assert tuple(field.name for field in fields(model)) == expected_fields
+    field_name = expected_fields[0]
+    with pytest.raises(FrozenInstanceError):
+        setattr(model, field_name, getattr(model, field_name))
+
+
+def test_session_state_has_exact_fields_and_is_the_only_mutable_model() -> None:
+    state = SessionState("run-1")
+    assert tuple(field.name for field in fields(state)) == (
+        "run_id",
+        "state",
+        "round_count",
+        "invalid_count",
+        "repeat_count",
+        "actions",
+        "last_feedback",
+        "last_test_passed",
+        "touched_files",
+        "fingerprints",
+    )
+    state.run_id = "run-2"
+    assert state.run_id == "run-2"
 
 
 def test_model_enums_have_stable_string_values() -> None:
