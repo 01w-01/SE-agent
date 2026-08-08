@@ -1,0 +1,146 @@
+# FBW Coding Agent Harness 智能体过程日志
+
+## 1. 记录约定
+
+- 按时间和过程 task 编号排列；早期记录由完整对话、`docs/LOG.md` 和 Git 历史回填，无法可靠还原的具体时分不虚构。
+- 每条包含技能、关键 prompt/context、输出或 commit、人工干预和教训。
+- 当前主开发智能体为 OpenAI Codex；截至本文件初始化，没有使用 subagent。
+- 不记录 API Key、Authorization 请求头或其他秘密值。
+
+## 2. 时间线
+
+### 2026-08-05 · P-001 · 启动并验证 Superpowers
+
+- Superpowers 技能：`using-superpowers`、`brainstorming`。
+- 关键 prompt/context：完整阅读两份课程要求；确认插件是否安装启用；扫描 uv、PowerShell 7、Scoop 环境；禁止自行确定语言。
+- 输出：确认 Superpowers 6.2.0 可用；列出 Python、TypeScript、Go 候选；发现 CLI/WebUI 与凭据两类潜在冲突。
+- subagent/commit：未使用 subagent；无提交。
+- 人工干预：用户选择 Python + uv，并要求用白话说明 Python 与 TypeScript 分发。
+- 教训：环境可行不等于用户适合；技术推荐必须包含学习和分发成本。
+
+### 2026-08-05 · P-002 · 收敛反馈闭环
+
+- Superpowers 技能：`brainstorming`。
+- 关键 prompt/context：六个 harness 维度中重点考虑反馈闭环；要求形成确定性、可解释的演示。
+- 输出：选择 pytest 失败信号、`clamp()` 边界错误、结构化 Feedback 和失败指纹。
+- subagent/commit：未使用 subagent；无提交。
+- 人工干预：用户依次确认单元测试失败、`clamp()` 和结构化反馈，并要求阶段性白话回顾。
+- 教训：用一个简单业务错误承载复杂机制，能避免演示目标被算法细节遮蔽。
+
+### 2026-08-05 · P-003 · 纠正产品与演示边界
+
+- Superpowers 技能：`brainstorming`。
+- 关键 prompt/context：用户指出预期是能配置 Base URL/API Key 并直接使用的简陋产品，而非只修复一个函数。
+- 输出：确立“真实 LLM CLI 产品 + Mock LLM 机制演示”双轨结构。
+- subagent/commit：未使用 subagent；无提交。
+- 人工干预：用户推翻过窄 demo 定义，选择继续实现可运行成品。
+- 教训：`demo` 一词歧义很大，必须分别确认产品可用范围和评审演示范围。
+
+### 2026-08-05 · P-004 · 建立初始 Git 基线
+
+- Superpowers 技能：`brainstorming`（本次提交是用户明确要求的仓库准备动作）。
+- 关键 prompt/context：提交一开始的文件，提交信息 `init`；不提交 `docs/` 进度文件；忽略 `docs/temp.md`。
+- 输出/commit：创建根提交 `77da924 init`；更新忽略规则。
+- subagent：未使用。
+- 人工干预：提交范围和 message 均由用户指定。
+- 教训：该提交纳入了早期脚本中的临时 API Key，导致 Git 历史不满足正式课程凭据规则；未经用户明确授权不得擅自重写历史。
+
+### 2026-08-05 · P-005 · 重构安全模型
+
+- Superpowers 技能：`brainstorming`。
+- 关键 prompt/context：直接修改原项目，但不能损坏其他文件；全仓复制不适合大型项目；安全级别必须可解释。
+- 输出：受控动作协议、工作区围栏、`ALLOW/CONFIRM/DENY`、禁止任意 PowerShell/删除/越界、写前哈希、原子替换和逐文件回滚。
+- subagent/commit：未使用 subagent；无提交。
+- 人工干预：用户否决粗粒度三方案，最终选择普通受控操作自动、高风险审批的直接修改模式。
+- 教训：安全方案不能只贴“高/中/低”标签，必须说明具体威胁和失败时恢复行为。
+
+### 2026-08-05 · P-006 · 确认模块化状态机
+
+- Superpowers 技能：`brainstorming`。
+- 关键 prompt/context：比较单文件循环、模块化状态机、事件驱动插件内核；兼顾真实 CLI、可单测机制和首版复杂度。
+- 输出：选择同步单进程状态机；拆分 CLI、AgentLoop、LLM、解析、策略、事务、测试、反馈、记忆和配置。
+- subagent/commit：未使用 subagent；无提交。
+- 人工干预：用户采纳推荐方案，并将不改变产品行为的普通技术判断委托给智能体推荐。
+- 教训：面向基础较弱的项目负责人，应把批准对象从内部术语转换为可观察行为和验收结果。
+
+### 2026-08-05 至 2026-08-08 · P-007 · 完成 brainstorming 设计依据
+
+- Superpowers 技能：`brainstorming`。
+- 关键 prompt/context：分节确认架构、数据流、安全、错误、停机、测试和三项 Mock 机制演示。
+- 输出：`docs/superpowers/specs/2026-08-08-coding-agent-harness-demo-design.md`。
+- subagent/commit：未使用 subagent；`b773647 docs: 添加 Coding Agent Harness demo 设计`。
+- 人工干预：用户连续批准模块化状态机、数据流、安全默认值和测试矩阵。
+- 教训：该文档足以作为设计输入，但缺少课程正式 SPEC 的 INVEST、逐功能规约、凭据安全、分发和冲突治理，不能冒充正式交付物。
+
+### 2026-08-08T22:45:40+08:00 · P-008 · 升级为正式课程规约
+
+- Superpowers 技能：`using-superpowers`、`brainstorming`；明确未调用 `writing-plans`。
+- 关键 prompt/context：仓库虽可舍弃，本次必须按正式 AI4SE 项目完成；完整复用课程原文、设计依据、进度记录和对话；先完成并自检 SPEC，由用户批准后才能计划和编码。
+- 输出：正式 `SPEC.md`、`SPEC_PROCESS.md`、`AGENT_LOG.md`；课程冲突显式登记。
+- subagent：未使用。
+- 人工干预：用户纠正项目定位，并明确要求不重写 Git 历史、不做 WebUI、继续 `main`。
+- 教训：仓库生命周期与工程流程严肃性是两个不同维度；“以后可能重做”不能被解释为省略正式要求。
+
+## 3. 当前关键决定
+
+| 决定 | 来源/责任 | 状态 |
+|---|---|---|
+| Python + uv，Windows 优先，纯 CLI | 用户选择 | 已写入 SPEC |
+| 模块化同步单进程状态机 | AI 推荐、用户采纳 | 已写入 SPEC |
+| 反馈闭环为重点，pytest 为主信号 | 共同收敛 | 已写入 SPEC |
+| 真实 CLI + Mock LLM 共用内核 | AI 修正、用户采纳 | 已写入 SPEC |
+| 普通受控操作自动，仅高风险审批 | 用户选择 | 已写入 SPEC |
+| 禁止任意 PowerShell、删除、越界 | 用户要求 | 已写入 SPEC |
+| 直接修改、逐文件事务和失败回滚 | 用户选择、共同细化 | 已写入 SPEC |
+| Credential Manager 存储 Key | AI 依据课程要求推荐 | 待用户随 SPEC 审阅 |
+| 继续在 `main`，不新建分支 | 用户决定 | 有意流程偏离 |
+| 不实现 WebUI | 用户决定 | 与课程最终清单冲突 |
+| 不自行重写含 Key 的 Git 历史 | 用户限制 | 公开发布阻断项 |
+
+## 4. Superpowers 技能使用状态
+
+| 技能 | 使用情况 | 证据/说明 |
+|---|---|---|
+| `using-superpowers` | 已使用 | 会话开始和正式定位修订时核对技能流程 |
+| `brainstorming` | 已使用 | P-001 至 P-008，产出设计依据和正式 SPEC |
+| `writing-plans` | 未使用 | 等待用户批准 SPEC 的强制门禁 |
+| `using-git-worktrees` | 未使用 | 尚未进入实现；且当前用户决定 main 推进 |
+| `subagent-driven-development` / `executing-plans` | 未使用 | PLAN 尚未生成 |
+| `test-driven-development` | 未使用 | 实现尚未开始 |
+| `requesting-code-review` | 未使用 | 尚无实现 task 可评审 |
+| `finishing-a-development-branch` | 未使用 | 尚未进入收尾 |
+
+## 5. 已知偏离与待解决冲突
+
+### D-01 · WebUI
+
+- 课程要求：最终提供可访问 WebUI。
+- 当前决定：纯 CLI，不做 WebUI。
+- 处理：如实记录，当前不得声称完全合规；后续需用户或课程方作最终裁决。
+
+### D-02 · 凭据已进入历史
+
+- 课程要求：源码、日志、配置和 Git 历史均不得含 Key。
+- 当前事实：`77da924` 已包含学校临时 Key。
+- 处理：不在新文档重复 Key；公开发布前必须轮换/撤销、移除当前树、经用户授权重写历史并全历史复扫。当前禁止智能体自行重写。
+
+### D-03 · 分支、worktree 与 PR
+
+- 课程要求：按 worktree/subagent/PR 流程保留过程证据。
+- 当前决定：本仓继续在 `main`，不建新分支。
+- 处理：记录为有意偏离；进入实现计划前再次暴露其评分风险，但不擅自改变。
+
+### D-04 · 探索定位
+
+- 早期上下文：称为随时可舍弃的探索 demo。
+- 当前决定：按正式课程流程完成可运行成品。
+- 处理：后者覆盖交付范围；前者作为需求演化证据保留。
+
+## 6. 提交索引
+
+| Commit | 内容 | 过程含义 |
+|---|---|---|
+| `77da924 init` | 初始文件与旧原型 | 建立基线，同时引入凭据历史冲突 |
+| `b773647 docs: 添加 Coding Agent Harness demo 设计` | brainstorming 设计依据 | 不是正式 SPEC |
+
+后续正式文档提交完成后，应在本表新增其 commit；实现阶段每个 PLAN task 还需记录 task、技能、subagent、人工修改和验证证据。
