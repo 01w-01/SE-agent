@@ -99,6 +99,15 @@
 - 人工干预：用户的批准解除 writing-plans 门禁；此前选择的 branch + worktree + PR 成为每个编码 task 的强制流程。
 - 教训：计划中的测试 helper 也属于接口，若不明确定义，陌生实现者会依赖主 agent 的隐性上下文；发布 task 必须把已知不合规写成停止条件。
 
+### 2026-08-09T00:14:24+08:00 · P-011 · Claude 冷启动连接阻塞
+
+- Superpowers 技能：`using-superpowers`、`using-git-worktrees`、`systematic-debugging`；未调用实现技能。
+- 关键 prompt/context：使用全新 Claude Code 2.1.226、学校 Anthropic 兼容接口、默认 Flash 模型；只用一次性进程环境，不持久化会话或凭据。
+- 输出：创建隔离分支/worktree；现有 uv 包导入基线正常，旧原型没有 pytest 依赖；Claude 的自定义模型直连、原生模型槽位映射和窗口校验组合均未成功。
+- subagent/commit：Claude 尚未进入任务会话，没有 subagent 产出或 commit；worktree 跟踪文件干净且不合并。
+- 人工干预：用户提供学校接口、Key 和模型选择；智能体没有把 Key 复制到日志或文件。
+- 教训：Anthropic `/messages` 兼容不自动等于 Claude Code CLI 全部兼容；CLI 还有模型槽位、上下文窗口和鉴权约定。三次修正失败后应停止叠加开关并重新选择网关结构。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |
