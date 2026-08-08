@@ -952,7 +952,7 @@ Ruff、定向 format 和 `git diff --check` 均通过；review/fix round 1 clean
 - Consumes: `Action`、`Workspace`、`HarnessConfig.normal_change_line_limit`、`ApprovalProvider`。
 - Produces: `PolicyEngine.evaluate(action, context) -> PolicyDecision`、`authorize(decision, provider) -> bool`。
 
-- [ ] **Step 1: 写规则表失败测试**
+- [x] **Step 1: 写规则表失败测试**
 
 ```python
 def edit_action(path: str) -> Action:
@@ -989,21 +989,21 @@ def test_high_risk_fact_requires_confirmation(action: Action, context: PolicyCon
     assert PolicyEngine().evaluate(action, context).level is PolicyLevel.CONFIRM
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `uv run --project mini-harness pytest mini-harness/tests/test_policy.py -v`
 
 Expected: FAIL because policy engine is absent.
 
-- [ ] **Step 3: 实现稳定规则顺序**
+- [x] **Step 3: 实现稳定规则顺序**
 
 ActionParser 先拒绝未知动作、任意命令和删除/移动/重命名工具名；PolicyEngine 对合法 Action 先判 DENY：绝对/越界、`.git`、凭据、重解析点；再判 CONFIRM：依赖/锁文件、CI/发布文件、任务开始已有脏文件、超过 200 行、网络/进程/注册表等危险能力；其余受控文件动作 ALLOW。首个匹配规则写入稳定 `rule_id`，所有风险事实保留供 UI 和 LLM 使用。
 
-- [ ] **Step 4: 实现审批端口且不允许 reason 覆盖规则**
+- [x] **Step 4: 实现审批端口且不允许 reason 覆盖规则**
 
 只有 CONFIRM 调用 `ApprovalProvider.confirm(ApprovalRequest)`；DENY 永不请求审批，ALLOW 永不打扰用户。模型的 `Action.reason` 只显示，不参与降级。
 
-- [ ] **Step 5: 运行测试、lint 并提交**
+- [x] **Step 5: 运行测试、lint 并提交**
 
 Run: `uv run --project mini-harness pytest mini-harness/tests/test_policy.py -v`
 
@@ -1013,6 +1013,11 @@ Run: `uv run --project mini-harness pytest -q`
 git add -- mini-harness/src/fbw_harness/policy.py mini-harness/tests/test_policy.py
 git commit -m "feat: 添加治理与人工审批"
 ```
+
+**实现记录（2026-08-10）：** 实现提交 `fc9e8d7`；独立评审后的修复提交
+`309cc15`。最终验证为策略测试 `51 passed`、全量测试 `264 passed`、Ruff、
+format 和 `git diff --check` 均通过；review/fix round 1 clean。真实 ToolDispatcher
+零调用证明按依赖关系留到 Task 11。PR 链接在创建后补录。
 
 ---
 
