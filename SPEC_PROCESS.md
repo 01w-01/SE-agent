@@ -156,7 +156,36 @@ brainstorming 主要推动了以下问题从模糊想法变成可验证决定：
 
 ## 8. PLAN 与陌生智能体冷启动状态
 
-- PLAN 状态：尚未生成。门禁是用户书面批准正式 `SPEC.md`，批准后才调用 `writing-plans`。
-- 冷启动状态：尚未执行，因为课程要求冷启动只能在 SPEC 与 PLAN 均形成后进行。
+- SPEC 批准：用户于 2026-08-08 明确回复“批准 SPEC”，`writing-plans` 门禁已解除。
+- PLAN 状态：已使用 Superpowers `writing-plans` 生成根目录 `PLAN.md`，正在完成正式文档提交。
+- 冷启动状态：尚未执行；SPEC 与 PLAN 已具备，提交后进入下一门禁。
 - 既定执行协议：使用与 Codex 不同类型的全新智能体，不提供对话或 memory，只给 SPEC + PLAN；令其选 1–2 个 task，遇到不确定立即暂停。
 - 后续记录内容：智能体停顿点、错误解读、产出差距、缺陷归因，以及 SPEC/PLAN 修订前后的关键 diff。
+
+## 9. PLAN 生成过程
+
+### 9.1 文件结构与任务边界
+
+- 选择一份总 PLAN，而不是按子系统拆成多个计划：凭据、工作区、治理、反馈、LLM、记忆最终必须由同一个 AgentLoop 闭环，属于一个集成产品。
+- 将旧 `mini-harness` 原型迁移为 `src/fbw_harness` 包；根目录保留课程文档、CI、构建和证据文件。
+- 拆成 14 个可独立评审 task：安全骨架、领域契约、配置、凭据、工作区、事务、治理、反馈、LLM/上下文、记忆、AgentLoop、CLI/演示、分发、最终门禁。
+- Task 4/5/8/9/10 可在基础契约合并后并行；AgentLoop 在所有核心能力完成后统一集成。
+
+### 9.2 TDD、worktree 与评审
+
+- 每个 task 明确精确文件、消费/产出接口、失败测试、预期失败、最小实现、绿色验证和中文 Conventional Commit。
+- 现有文档历史保留在 `main`；正式编码 task 使用独立 branch + worktree，经 SPEC 合规和代码质量两阶段评审后通过 PR 合并。
+- PLAN 记录当前仓库没有远端时的停止条件，不猜测 NJU Git/GitHub URL。
+
+### 9.3 风险门禁
+
+- Task 1 只清理当前树旧原型中的明文，不重写已有 Git 历史。
+- Task 14 明确历史扫描在当前决定下会失败：只报告 commit/path，不打印 Key，不创建公开 Release，也不把失败伪装成合规。
+- 首版 WebUI 冲突继续保留；未来可扩展接口不等于已交付 WebUI。
+
+### 9.4 PLAN 自检结果
+
+- 14 个 task、88 个可勾选实现步骤、14 个 task commit；
+- F-01 至 F-12、六个 harness 维度、三项机制演示和 AC-01 至 AC-24 均有追踪映射；
+- 未发现未完成标记、占位内容或明文 Key 模式；
+- 修正了测试片段中的隐式 helper，并明确未知工具由 ActionParser 拒绝、合法动作的危险路径由 PolicyEngine 拒绝。

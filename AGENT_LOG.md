@@ -90,6 +90,15 @@
 - 人工干预：用户接受当前私有阶段 Key 风险；决定现有历史不动，从正式编码开始使用 branch + worktree + PR。
 - 教训：为未来扩展预留的是稳定接口和依赖方向，不是空目录或无行为占位代码；文档阶段直接提交 main 不必强迫未来编码继续偏离课程流程。
 
+### 2026-08-08T23:25:08+08:00 · P-010 · SPEC 获批并生成正式 PLAN
+
+- Superpowers 技能：`using-superpowers`、`writing-plans`；未调用实现技能。
+- 关键 prompt/context：用户明确回复“批准 SPEC”；PLAN 必须位于根目录，覆盖 TDD、精确文件、接口、依赖、并行、worktree/PR、冷启动和全部课程交付。
+- 输出：根目录 `PLAN.md`，包含 14 个 task、88 个步骤、依赖图、冷启动门禁、统一收尾检查和 SPEC 可追踪矩阵。
+- subagent/commit：未使用 subagent；PLAN 由主 Codex 根据已批准 SPEC 生成，正式文档 commit 在本轮完成。
+- 人工干预：用户的批准解除 writing-plans 门禁；此前选择的 branch + worktree + PR 成为每个编码 task 的强制流程。
+- 教训：计划中的测试 helper 也属于接口，若不明确定义，陌生实现者会依赖主 agent 的隐性上下文；发布 task 必须把已知不合规写成停止条件。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |
@@ -114,9 +123,9 @@
 | `using-superpowers` | 已使用 | 会话开始和正式定位修订时核对技能流程 |
 | `brainstorming` | 已使用 | P-001 至 P-009，产出设计依据并迭代正式 SPEC |
 | `receiving-code-review` | 已使用 | P-009，核对并落实用户第一轮 SPEC 审阅 |
-| `writing-plans` | 未使用 | 等待用户批准 SPEC 的强制门禁 |
-| `using-git-worktrees` | 未使用 | 尚未进入实现；且当前用户决定 main 推进 |
-| `subagent-driven-development` / `executing-plans` | 未使用 | PLAN 尚未生成 |
+| `writing-plans` | 已使用 | P-010，依据已批准 SPEC 生成正式 PLAN |
+| `using-git-worktrees` | 未使用 | 等待陌生智能体冷启动完成后再创建首个实现 worktree |
+| `subagent-driven-development` / `executing-plans` | 未使用 | PLAN 已生成，但实现仍被冷启动门禁阻挡 |
 | `test-driven-development` | 未使用 | 实现尚未开始 |
 | `requesting-code-review` | 未使用 | 尚无实现 task 可评审 |
 | `finishing-a-development-branch` | 未使用 | 尚未进入收尾 |
@@ -154,5 +163,6 @@
 | `77da924 init` | 初始文件与旧原型 | 建立基线，同时引入凭据历史冲突 |
 | `b773647 docs: 添加 Coding Agent Harness demo 设计` | brainstorming 设计依据 | 不是正式 SPEC |
 | `b5f3d72 docs: 补齐正式课程规约与过程记录` | 正式 SPEC 与过程记录初版 | 进入用户书面审阅门禁 |
+| `2286e3c docs: 修订 CLI 扩展边界与开发流程` | 第一轮 SPEC 审阅修订 | 进入最终批准门禁 |
 
 后续正式文档提交完成后，应在本表新增其 commit；实现阶段每个 PLAN task 还需记录 task、技能、subagent、人工修改和验证证据。
