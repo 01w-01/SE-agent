@@ -117,6 +117,16 @@
 - 人工干预：用户提供 DeepSeek 官方文档入口并要求评估手动与自动方式的差异；Key 未写入本文件、配置或新提交。
 - 教训：OpenAI 风格 Base URL 不能机械复制给 Anthropic SDK；自动化与手动启动共享协议，`--bare` 的认证限制才是本次实质差异。最小连通与长 Agent 任务稳定性必须分别验收。
 
+### 2026-08-09T00:55:00+08:00 · P-013 · 冷启动发现 PLAN 依赖顺序缺陷
+
+- Superpowers 技能：`using-superpowers`、`systematic-debugging`、`receiving-code-review`、`writing-plans`；未调用实现技能。
+- 关键 prompt/context：Claude 处于 safe mode、无会话持久化，只把 `SPEC.md`、`PLAN.md` 作为权威需求；先只读检查 Task 2/5 前置依赖，禁止写文件、命令和联网。
+- 输出：1 美元试跑因预算停止；仅提高到 3 美元后得到 `COLD_START_BLOCKED`。报告指出 Task 1/2/3 产物均不存在，因此不能从基线直接试做 Task 2/5。
+- 人工核验：PLAN 依赖图和实际文件均支持该结论；修订 Gate 2 为顺序试做 Task 1 → Task 2，Task 5 等 Task 2/3 合并后正式实现。
+- subagent/commit：Claude Code 为课程冷启动陌生智能体，不是 Codex subagent；只读检查无源码修改、无提交、无合并。
+- 人工干预：用户回复“继续”，授权延续既定冷启动流程；修订版 PLAN 仍需用户重新批准，批准前不进入写入试做。
+- 教训：冷启动样本不能只按功能代表性选择，还必须从 worktree 的真实基线沿依赖图可执行；预算上限也是 Agent 运行门禁的一部分，应与任务上下文规模匹配。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |
