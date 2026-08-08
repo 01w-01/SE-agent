@@ -123,3 +123,67 @@ def test_config_accepts_declared_types_and_normalizes_paths() -> None:
     assert result.jsonl_log == Path("logs/run.jsonl")
     assert result.memory_enabled is True
     assert result.memory_path == Path("memory.json")
+
+
+@pytest.mark.parametrize("source", ["project", "user"])
+def test_config_rejects_non_utf8_file_without_disclosing_path_or_content(
+    tmp_path: Path, source: str
+) -> None:
+    config = tmp_path / f"{source}.toml"
+    config.write_bytes(b"\xffprivate-content")
+    request = make_request(config_path=config if source == "project" else None)
+
+    with pytest.raises(InputError) as error:
+        load_config(request, user_config=config if source == "user" else None)
+
+    message = str(error.value)
+    assert source in message
+    assert "config_file" in message
+    assert str(config) not in message
+    assert "private-content" not in message
+
+
+@pytest.mark.parametrize(
+    ("source", "contents"),
+    [
+        ("project", None),
+        ("user", None),
+        ("project", "max_rounds =\n"),
+        ("user", "max_rounds =\n"),
+    ],
+)
+def test_config_file_errors_identify_source_and_config_file(
+    tmp_path: Path, source: str, contents: str | None
+) -> None:
+    config = tmp_path / f"{source}.toml"
+    if contents is not None:
+        write_toml(config, contents)
+    request = make_request(config_path=config if source == "project" else None)
+
+    with pytest.raises(InputError) as error:
+        load_config(request, user_config=config if source == "user" else None)
+
+    message = str(error.value)
+    assert source in message
+    assert "config_file" in message
+    assert str(config) not in message
+    assert "max_rounds" not in message
+
+
+@pytest.mark.parametrize("source", ["CLI", "project", "user"])
+def test_config_rejects_pytest_at_file_argument_from_every_source(
+    tmp_path: Path, source: str
+) -> None:
+    config = write_toml(tmp_path / f"{source}.toml", 'pytest_args = ["@options.txt"]\n')
+    request = make_request(
+        config_path=config if source == "project" else None,
+        overrides={"pytest_args": ["@options.txt"]} if source == "CLI" else None,
+    )
+
+    with pytest.raises(InputError) as error:
+        load_config(request, user_config=config if source == "user" else None)
+
+    message = str(error.value)
+    assert source in message
+    assert "pytest_args" in message
+    assert "@options.txt" not in message

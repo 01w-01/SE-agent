@@ -59,8 +59,8 @@ def _load_file(path: Path | None, source: str) -> dict[str, object]:
         return {}
     try:
         values = tomllib.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError) as error:
-        raise InputError(f"Invalid {source} configuration") from error
+    except (OSError, UnicodeError, tomllib.TOMLDecodeError) as error:
+        raise InputError(f"Invalid {source} configuration field config_file") from error
     return _validate_values(values, source)
 
 
@@ -104,7 +104,7 @@ def _validate_pytest_args(value: object, source: str) -> tuple[str, ...]:
     if not isinstance(value, (list, tuple)) or not all(type(item) is str for item in value):
         raise InputError(f"{source} configuration field pytest_args must be a list of strings")
     for argument in value:
-        if argument.startswith(("--rootdir", "-c")) or any(
+        if argument.startswith(("@", "--rootdir", "-c")) or any(
             character in argument for character in _UNSAFE_PYTEST_ARGUMENT_CHARS
         ):
             raise InputError(f"{source} configuration field pytest_args contains an unsafe argument")
