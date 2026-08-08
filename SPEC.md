@@ -2,7 +2,7 @@
 
 > 课程：AI4SE 期末项目 A · Coding Agent Harness
 >
-> 版本：1.0-draft
+> 版本：1.1-draft
 >
 > 日期：2026-08-08
 >
@@ -45,7 +45,7 @@ FBW 要把 OpenAI 兼容 LLM 封装成一个 Windows 优先的 Coding Agent Harn
 
 ### 3.1 产品目标
 
-1. 提供可安装、可运行的纯 CLI Coding Agent Harness；
+1. 首版提供可安装、可运行的纯 CLI Coding Agent Harness；CLI 作为可替换入口，核心层不依赖终端；
 2. 支持 OpenAI Chat Completions 兼容 API，默认测试模型为 `deepseek-v4-flash`；
 3. 在用户指定的 Python 项目中按需读取、创建和精确修改普通文本文件；
 4. 每次代码写入后由 harness 强制运行 pytest，并将结果结构化回灌；
@@ -63,7 +63,7 @@ FBW 要把 OpenAI 兼容 LLM 封装成一个 Windows 优先的 Coding Agent Harn
 - 首版不支持 Python/pytest 之外的语言和测试框架；
 - 不实现多 Agent 编排、事件总线、插件平台或服务端数据库；
 - 不声称静态扫描和路径围栏等同于操作系统级沙箱；
-- 用户明确决定不提供 WebUI，相关课程冲突见 §20；
+- 首版不实现 WebUI，但应用层须保留稳定入口与事件接口，使未来可增加 WebUI 适配器而不重写 harness 核心；相关课程冲突见 §20；
 - 不在本规格批准前生成 PLAN 或实现代码。
 
 ## 4. 用户故事
@@ -131,16 +131,17 @@ FBW 要把 OpenAI 兼容 LLM 封装成一个 Windows 优先的 Coding Agent Harn
 
 ### 5.1 架构风格
 
-采用模块化、同步、单进程状态机。所有模型决策通过统一 LLM 抽象进入同一 AgentLoop；真实客户端和 Mock 客户端不得各自实现不同循环。
+采用模块化、同步、单进程状态机，并在界面与核心之间使用端口/适配器边界。首版只实现 `CLIAdapter`；`ApplicationService` 接收结构化 `RunRequest`，通过 `EventSink` 输出事件、通过 `ApprovalProvider` 请求审批，最终返回 `RunResult`。核心模块不得导入 `argparse`、调用 `input()` 或直接 `print()`。未来 WebUI 只需实现新的适配器并复用同一应用层，不预先创建无行为的 WebUI 占位代码。
+
+所有模型决策通过统一 LLM 抽象进入同一 AgentLoop；真实客户端和 Mock 客户端不得各自实现不同循环。
 
 ```text
-用户
- |
- v
-CLI / Config / CredentialStore
- |
- v
-AgentLoop / SessionState
+用户 -> CLIAdapter（首版） -----------+
+未来 -> WebUIAdapter（未实现） ------+--> ApplicationService
+                                      |    RunRequest / EventSink
+                                      |    ApprovalProvider / RunResult
+                                      v
+                               AgentLoop / SessionState
  |
  +---- ContextBuilder ---- 任务 / 工具协议 / 观察 / 反馈 / 记忆
  +---- LLMClient --------- OpenAICompatibleClient / MockLLMClient
@@ -179,14 +180,14 @@ INITIALIZING
 
 ### 5.3 一次任务的数据流
 
-1. CLI 校验工作区和非秘密配置，CredentialStore 从 Credential Manager 把 Key 读入进程内存，建立 `SessionState` 与文件事务；
+1. CLIAdapter 解析终端参数并构造 `RunRequest`；ApplicationService 校验工作区和非秘密配置，CredentialStore 从 Credential Manager 把 Key 读入进程内存，建立 `SessionState` 与文件事务；
 2. ContextBuilder 组合任务、工具 schema、项目摘要、最近 Observation/Feedback 和按需文件内容；
 3. LLMClient 发起一次补全，ActionParser 把唯一工具调用解析为 `Action`；解析失败也进入反馈，不直接执行文本；
 4. PolicyEngine 检查路径、动作、风险和当前事务，输出 `ALLOW`、`CONFIRM` 或 `DENY`；
 5. 获准动作由 ToolDispatcher 执行；写动作先校验哈希并记录首次快照，再原子替换文件；
 6. 写入代码后 TestRunner 自动运行固定 pytest，FeedbackEngine 将结果分类、脱敏、摘要并生成指纹；
-7. Feedback 以高优先级回到 ContextBuilder，驱动下一轮动作；Observer 同步输出脱敏事件；
-8. 只有完成门禁通过才能提交事务并形成 `RunResult`；失败、中断或无进展则回滚，成功摘要可在用户显式启用时写入 ProjectMemory。
+7. Feedback 以高优先级回到 ContextBuilder，驱动下一轮动作；Observer 产生脱敏结构化事件，由 CLI EventSink 渲染为终端文本；
+8. 只有完成门禁通过才能提交事务并形成 `RunResult`；失败、中断或无进展则回滚，成功摘要可在用户显式启用时写入 ProjectMemory；CLIAdapter 只负责把结果映射为退出码。
 
 秘密只在 CredentialStore 与 LLMClient 调用边界的进程内存中流动，不进入 Action、Feedback、Observer、事务记录或 ProjectMemory。
 
@@ -274,16 +275,27 @@ SessionState 1 ── * Action 1 ── 1 PolicyDecision
 
 只包含用户显式项目说明、最近一次成功运行摘要、更新时间和格式版本。禁止保存 API Key、完整对话和文件全文。
 
+### 6.8 应用入口模型
+
+| 模型/端口 | 字段或职责 | 约束 |
+|---|---|---|
+| `RunRequest` | 工作区、任务、Base URL、模型、非秘密配置 | 与 CLI 参数对象解耦，不包含 API Key |
+| `RunEvent` | run ID、事件种类、阶段、脱敏摘要、允许字段 payload | 不包含终端颜色、排版或完整敏感正文 |
+| `EventSink` | 接收 `RunEvent` | CLI 首版负责终端渲染；Fake 用于测试；未来可由 WebUI 实现 |
+| `ApprovalRequest` | 规则、原因、风险事实、受影响相对路径 | 不携带秘密或未截断文件内容 |
+| `ApprovalProvider` | 返回批准或拒绝 | CLI 首版交互确认；核心不调用 `input()` |
+| `RunResult` | 结果状态、退出语义、轮数、触碰文件、测试和回滚摘要 | CLIAdapter 再将其映射为进程退出码 |
+
 ## 7. 功能规约
 
-### F-01 CLI 与配置
+### F-01 CLI、应用入口与配置
 
 | 项目 | 规约 |
 |---|---|
 | 输入 | `run`、`credential`、`memory` 子命令；工作区、任务、Base URL、模型和非秘密配置 |
-| 行为 | 解析参数、加载 TOML/默认值、规范化目录、建立 SessionState；秘密值不接受普通明文配置 |
+| 行为 | CLIAdapter 解析参数并构造 RunRequest；ApplicationService 加载 TOML/默认值、规范化目录并建立 SessionState；通过 EventSink、ApprovalProvider 与入口交互 |
 | 输出 | 状态事件、最终 RunResult、稳定退出码 |
-| 边界 | Windows 10/11 x64；工作区不得为磁盘根或用户主目录 |
+| 边界 | Windows 10/11 x64；工作区不得为磁盘根或用户主目录；核心层不得依赖 argparse、input、print 或终端格式，首版不实现 WebUIAdapter |
 | 错误 | 参数/配置无效时在调用 LLM 与写文件前退出，返回 `2` |
 
 ### F-02 凭据管理
@@ -468,7 +480,7 @@ SessionState 1 ── * Action 1 ── 1 PolicyDecision
 
 ### 9.3 当前历史冲突
 
-提交 `77da924` 中的既有原型/检测脚本已经包含临时 API Key，因此当前 Git 历史不符合课程“历史中不得出现凭据”的要求。解决合规问题至少需要：撤销/轮换该 Key、从当前树移除明文、经用户明确授权后重写历史、再次全历史扫描。用户明确要求本轮不得自行重写历史，所以该问题保持为阻断公开提交的未解决风险。
+提交 `77da924` 中的既有原型/检测脚本已经包含额度受限的临时 API Key，因此当前 Git 历史不符合课程“历史中不得出现凭据”的要求。用户接受当前私有开发阶段的风险，明确决定保留现有历史、不轮换也不重写，并且当前不公开发布。该问题不阻断本地规格、计划和实现；公开发布或正式课程提交时仍必须执行历史扫描并如实报告不合规，除非用户届时改变授权。
 
 ## 10. 非功能性需求
 
@@ -496,6 +508,7 @@ SessionState 1 ── * Action 1 ── 1 PolicyDecision
 - 高风险审批必须显示触发规则和受影响文件；
 - `Ctrl+C` 触发受控停止和回滚；
 - README 面向全新 Windows 机器给出从下载到首次任务的完整步骤。
+- CLI 文案与渲染只存在于 CLIAdapter；核心输出稳定的结构化事件和 RunResult，便于未来接入 WebUI 或其他入口。
 
 ### 10.4 可观测性
 
@@ -509,6 +522,7 @@ SessionState 1 ── * Action 1 ── 1 PolicyDecision
 
 - 核心机制不依赖真实 LLM、网络或 Key；
 - 所有外部边界通过接口可注入 Mock/Fake；
+- 使用 Fake EventSink 与 ApprovalProvider 可在没有真实终端时测试完整核心流程；
 - 单元测试多次运行结果一致；
 - 回滚不完整不得被报告为成功；
 - CI 的 `unit-test` job 必须通过，最后一次 CI/CD 状态必须为 pass。
@@ -541,14 +555,14 @@ SessionState 1 ── * Action 1 ── 1 PolicyDecision
 | Python | 初学友好，文件/进程/JSON/测试生态成熟，适合快速表达状态机 | 动态类型风险通过类型标注、dataclass 和测试控制 |
 | uv | 可重复管理 Python、锁文件、依赖和一键命令 | `.exe` 另用 PyInstaller |
 | Python 3.13 x64 构建 | 相比最新解释器更适合作为固定发行构建基线 | 源码兼容范围在实现时验证并锁定 |
-| 标准库 `argparse`/`tomllib` | 减少 CLI 与配置依赖 | 界面朴素但满足纯 CLI |
+| 标准库 `argparse`/`tomllib` | 减少 CLI 与配置依赖；argparse 仅限 CLIAdapter | 界面朴素；通过应用层端口避免核心绑定终端 |
 | OpenAI Python SDK | 学校 API 已验证为 OpenAI 格式，允许自定义 Base URL | 仅使用单轮底层调用，不使用 agent runner |
 | `keyring` | 为 Windows Credential Manager 提供可测试抽象 | 需处理后端不可用与打包兼容 |
 | pytest | 与 Coding 领域客观反馈、TDD 和课程要求一致 | 首版仅支持 pytest 项目 |
 | PyInstaller | 生成 Windows x64 可执行文件，符合 GitHub Release 分发决定 | 产物较大、未签名、需新机验证 |
 | GitLab CI + GitHub Actions | 前者满足 `.gitlab-ci.yml`/`unit-test`，后者构建 GitHub Release | 两套 CI 增加维护成本，见 §20 |
 
-纯 CLI 不涉及前端，因此豁免 Open Design。
+首版纯 CLI 不涉及前端，因此当前豁免 Open Design。未来若正式实现 WebUI，须另行补充界面 SPEC、Open Design 选型和对应验收标准。
 
 ## 13. 配置设计
 
@@ -644,7 +658,7 @@ SPEC 与 PLAN 完成后、正式实现前，使用不同类型的新智能体，
 
 ### 16.2 工程验收
 
-- AC-16：至少 3 个职责清晰模块，实际按 §5 边界拆分；
+- AC-16：至少 3 个职责清晰模块，实际按 §5 边界拆分；核心测试可用 Fake EventSink/ApprovalProvider 运行，且核心包不导入 CLI 模块；
 - AC-17：`uv run pytest` 一键离线通过核心测试；
 - AC-18：三项机制演示可重复运行且结果一致；
 - AC-19：TDD 红—绿—重构证据、task commit 和评审结果进入 PLAN/AGENT_LOG；
@@ -660,6 +674,7 @@ SPEC 与 PLAN 完成后、正式实现前，使用不同类型的新智能体，
 - 批准后才能调用 `writing-plans` 生成正式 PLAN；
 - PLAN task 明确路径、2–5 分钟步骤、失败测试、验证、依赖和并行关系；
 - PLAN 后进行不同类型智能体冷启动验证并修订 SPEC/PLAN；
+- 正式实现从第一个 PLAN task 起使用独立 branch + worktree，评审通过后以 PR 合并回 `main`；现有历史不重写；
 - 实现使用 `test-driven-development`，并按任务执行 spec 合规和代码质量两阶段评审；
 - `AGENT_LOG.md` 持续记录技能、prompt/context、subagent、commit、人工干预和教训；
 - `SPEC_PROCESS.md` 持续记录 brainstorming、冷启动缺陷和修订 diff；
@@ -691,15 +706,15 @@ SPEC 与 PLAN 完成后、正式实现前，使用不同类型的新智能体，
 
 ### C-01 纯 CLI 与 WebUI 强制项冲突
 
-用户明确决定只做纯 CLI，不提供 WebUI；课程最终清单第 9 项却要求可访问 WebUI URL。通用分发要求允许原生二进制/包，A 项本身也适合 CLI，但最终清单文字仍构成风险。本规格保留纯 CLI 决定，并将其标为有意偏离；提交前应向教师取得书面确认，否则可能影响合规评分。
+用户明确决定首版只做纯 CLI，但允许未来增加 WebUI。为避免结构锁死，CLI 只作为适配器，ApplicationService、结构化事件和审批端口与界面无关；本阶段不创建无用 WebUI 占位实现。课程最终清单第 9 项仍要求可访问 WebUI URL，因此“可扩展”并不等于已经满足该交付项；提交前若仍无 WebUI，应向教师取得书面确认，否则可能影响合规评分。
 
 ### C-02 临时 API Key 已进入 Git 历史
 
-`77da924` 已包含临时 Key，违反课程“当前树和历史均不得有凭据”的要求。用户禁止本轮自行重写历史。公开推送/正式提交前必须由用户明确授权处理历史并轮换 Key；在此之前 AC-24 不可能通过。
+`77da924` 已包含额度受限的临时 Key，违反课程“当前树和历史均不得有凭据”的要求。用户接受当前私有开发阶段的风险，决定保留现有历史、不轮换也不重写，并且当前不公开发布。该问题不阻断本地开发，也不在每轮重复提醒；但公开发布或正式课程提交门禁必须执行历史扫描并如实失败，在用户改变授权前 AC-24 不可能通过。
 
-### C-03 当前在 main 推进与 worktree/PR 冲突
+### C-03 文档阶段在 main，编码阶段改用 worktree/PR（已解决）
 
-用户明确要求本次继续在 `main` 上、不新建分支；课程要求每个独立功能使用 worktree 和 PR。本规格如实记录该偏离。可在用户后续改变授权时恢复正式分支/worktree/PR；未改变前不得偷偷新建分支。
+现有 `77da924`、`b773647`、`b5f3d72` 和本轮规格修订继续保留在 `main`，不重写历史。用户已决定从正式编码阶段开始，每个 PLAN task 使用独立 branch + worktree，在测试和评审通过后通过 PR 合并回 `main`。因此此前冲突已解决；在 SPEC/PLAN 与冷启动门禁完成前仍不创建实现 worktree。
 
 ### C-04 项目从探索 demo 转为正式课程项目
 
@@ -717,6 +732,6 @@ SPEC 与 PLAN 完成后、正式实现前，使用不同类型的新智能体，
 2. 创建正式 `PLAN.md`；
 3. 进行不同类型智能体冷启动验证；
 4. 修订并再次批准 SPEC/PLAN；
-5. 进入 TDD 实现。
+5. 调用 `using-git-worktrees` 创建首个实现 worktree，以 TDD 开始实现，并通过 PR 合并。
 
-当前不得编写实现代码，也不得自行重写 Git 历史、创建分支或解决 §20 的用户授权冲突。
+当前不得编写实现代码，也不得自行重写 Git 历史或提前创建实现分支/worktree。
