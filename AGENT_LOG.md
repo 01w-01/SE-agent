@@ -214,6 +214,16 @@
 - 安全与边界：只修改 Task 3 两个白名单文件；错误不含配置值、路径或底层解析文本；没有 shell、CLI 终端依赖或秘密字段进入配置。
 - 分支已推送；PR：[PR #3](https://github.com/01w-01/SE-agent/pull/3)。
 
+### 2026-08-09 · P-023 · 正式 Task 4 Windows 凭据生命周期
+
+- Superpowers 技能：`using-git-worktrees`、`subagent-driven-development`、`test-driven-development`、`receiving-code-review`、`requesting-code-review`、`verification-before-completion`。
+- worktree：`D:\Codes\FBW-worktrees\task-04`；分支 `task/04-credentials`，基线 `db1b958`，基线测试 `93 passed`。
+- 实现：Fake keyring TDD 覆盖 set/get/status/clear、空白 Key、默认 service/account、后端错误脱敏和 manual marker 隔离；提交 `4e7fdc0 feat: 添加安全凭据存储`。
+- review：发现异常 `__context__` 仍可泄漏 Key（Critical）和所有 `PasswordDeleteError` 被误当不存在（Important）。fix round 1 先用递归异常图与删除权限失败测试观察 RED，再在 except 块外映射固定错误、删除失败后重新确认凭据状态；提交 `1ec3d3f fix: 消除凭据异常链泄漏`。
+- 最终验证：凭据 `9 passed`、全量 `102 passed`、Ruff 和累计 diff check 通过；scoped re-review 两项全部 ADDRESSED，无新 Critical / Important。
+- deferred Minor：`status()` 后端失败没有独立直接测试；其实现当前复用 `get()`，留待最终整分支审查统一裁决。
+- 安全边界：自动测试仅使用 Fake backend，未访问真实 Credential Manager；异常图、消息和 traceback 均不保留 Key 或 backend 原文。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |
