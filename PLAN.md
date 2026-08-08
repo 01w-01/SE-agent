@@ -173,9 +173,9 @@ Task 13 -> Task 14 最终门禁/发布
 
   在 `SPEC_PROCESS.md` 记录停顿点、错误解读、产出差距和缺陷归因；在 `AGENT_LOG.md` 记录智能体类型、输入文件、输出摘要和人工判断。
 
-- [x] **Gate 4：修订并重新批准**
+- [ ] **Gate 4：修订并重新批准**
 
-  若发现歧义，先修改 `SPEC.md`/`PLAN.md`，给出关键 diff，自检并由用户重新批准。本次已确认问题仅在 PLAN 冷启动任务顺序，不修改已批准 SPEC；修订版 PLAN 经用户批准后重新执行 Gate 2。冷启动 worktree 不合并，验证结束后安全移除。
+  若发现歧义，先修改 `SPEC.md`/`PLAN.md`，给出关键 diff，自检并由用户重新批准。当前确认的缺陷均只影响 PLAN：先修正冷启动任务顺序，再修正 Windows 下 Git 路径输出的显式 UTF-8 解码；不修改已批准 SPEC。每次修订经用户批准后才继续 Gate 2。冷启动 worktree 不合并，验证结束后安全移除。
 
 ---
 
@@ -217,9 +217,10 @@ def test_package_exposes_version() -> None:
 
 def test_tracked_worktree_has_no_api_key_pattern() -> None:
     root = Path(__file__).resolve().parents[2]
-    files = subprocess.run(
-        ["git", "ls-files"], cwd=root, check=True, capture_output=True, text=True
-    ).stdout.splitlines()
+    raw_files = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=root, check=True, capture_output=True
+    ).stdout
+    files = [path.decode("utf-8") for path in raw_files.split(b"\0") if path]
     pattern = re.compile(rb"sk-[A-Za-z0-9]{12,}")
     hits = [path for path in files if pattern.search((root / path).read_bytes())]
     assert hits == []
