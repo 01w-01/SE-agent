@@ -867,7 +867,14 @@ TOCTOU 防护未实现，残余风险按 SPEC R-09 保留。PR：
 - Consumes: `Workspace.resolve_safe/read_file`、`TransactionRecord`。
 - Produces: `FileTransaction(workspace, recovery_root)`，方法 `create_file`、`edit_file`、`commit`、`rollback -> RollbackReport`。
 
-- [ ] **Step 1: 写精确替换、哈希冲突和回滚失败测试**
+**用户裁决（2026-08-10）：** 沿用路径式方案 B，不实现平台专用条件更新或目录句柄事务。
+`expected_sha256` 复查、rollback 当前哈希与 `os.replace`/`unlink` 之间的极窄跨进程
+TOCTOU 作为 SPEC R-10 已知限制。现有方案仍须校验恢复材料的原始 SHA-256，并在恢复后
+复核目标哈希；`commit()` 一旦开始即进入不可写状态，只允许幂等清理重试；恢复文件落盘后
+在平台支持时尽力 fsync 其父目录；每次写入、恢复或清理恢复材料前重新验证恢复目录完整链、
+目录身份和非重解析点。任何验证失败保留材料并报告失败，不得误报完成。
+
+- [x] **Step 1: 写精确替换、哈希冲突和回滚失败测试**
 
 ```python
 def make_transaction(tmp_path: Path) -> tuple[Workspace, FileTransaction]:
@@ -896,25 +903,25 @@ def test_rollback_restores_original_and_removes_created_file(tmp_path: Path) -> 
     assert not (workspace.root / "new.py").exists()
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `uv run --project mini-harness pytest mini-harness/tests/test_transactions.py -v`
 
 Expected: FAIL because `FileTransaction` is undefined.
 
-- [ ] **Step 3: 实现首次快照和原子替换**
+- [x] **Step 3: 实现首次快照和原子替换**
 
 每个相对路径第一次写入前保存“是否存在、原始 SHA-256、恢复材料”；后续写入不能覆盖首次记录。临时文件创建在目标同目录，写入 UTF-8、flush 后 `os.fsync`，再用 `os.replace` 替换；替换前重新比对期望 SHA-256。
 
-- [ ] **Step 4: 实现提交与逆序回滚**
+- [x] **Step 4: 实现提交与逆序回滚**
 
 `commit()` 清理成功事务恢复材料；`rollback()` 按触碰逆序恢复原文件并移除本事务创建文件。任何恢复失败都保留恢复目录、返回失败路径，并由调用方转换为退出码 `3`。
 
-- [ ] **Step 5: 注入 os.replace/权限故障验证不误报成功**
+- [x] **Step 5: 注入 os.replace/权限故障验证不误报成功**
 
 使用 monkeypatch 让第二次恢复失败，断言 `RollbackReport.complete is False`、恢复目录存在、失败路径为相对路径，且不会删除仍需手工恢复的材料。
 
-- [ ] **Step 6: 运行全量测试并提交**
+- [x] **Step 6: 运行全量测试并提交**
 
 Run: `uv run --project mini-harness pytest mini-harness/tests/test_transactions.py -v`
 
@@ -924,6 +931,12 @@ Run: `uv run --project mini-harness pytest -q`
 git add -- mini-harness/src/fbw_harness/transactions.py mini-harness/tests/test_transactions.py
 git commit -m "feat: 添加文件事务与回滚"
 ```
+
+**实现记录（2026-08-10）：** 实现提交 `c67d2ac`；用户选择路径式方案 B 后，
+修复提交 `b4d7c1a`。最终验证为事务测试 `49 passed`、全量测试 `213 passed`、
+Ruff、定向 format 和 `git diff --check` 均通过；review/fix round 1 clean。
+平台级条件更新未实现，残余竞态按 SPEC R-10 保留。PR：
+[PR #6](https://github.com/01w-01/SE-agent/pull/6)。
 
 ---
 
