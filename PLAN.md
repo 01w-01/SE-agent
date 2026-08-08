@@ -850,7 +850,8 @@ git commit -m "feat: 添加工作区安全围栏"
 **实现记录（2026-08-09）：** 实现提交 `d69365d`；用户选择路径式方案 B 后，
 修复提交 `830a2a7`。最终验证为工作区测试 `62 passed`、全量测试 `164 passed`、
 Ruff、format 和 `git diff --check` 均通过；review/fix round 1 clean。原生句柄级
-TOCTOU 防护未实现，残余风险按 SPEC R-09 保留。PR 链接在创建后补录。
+TOCTOU 防护未实现，残余风险按 SPEC R-09 保留。PR：
+[PR #5](https://github.com/01w-01/SE-agent/pull/5)。
 
 ---
 
