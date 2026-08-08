@@ -108,6 +108,15 @@
 - 人工干预：用户提供学校接口、Key 和模型选择；智能体没有把 Key 复制到日志或文件。
 - 教训：Anthropic `/messages` 兼容不自动等于 Claude Code CLI 全部兼容；CLI 还有模型槽位、上下文窗口和鉴权约定。三次修正失败后应停止叠加开关并重新选择网关结构。
 
+### 2026-08-09T00:46:00+08:00 · P-012 · 官方配置验证成功、长任务被限流
+
+- Superpowers 技能：`using-superpowers`、`systematic-debugging`；延续既有 `using-git-worktrees` 隔离环境，未调用实现技能。
+- 关键 prompt/context：用户要求优先核对 DeepSeek 官方 Claude Code 文档；只用进程级环境变量，不写凭据；冷启动仍只允许读取正式 SPEC/PLAN 并试做 Task 2/5。
+- 输出：确认 Claude Code 应使用 `ANTHROPIC_AUTH_TOKEN`、学校域名根地址和带 `[1m]` 的 DeepSeek 模型名；Flash/Pro 最小连接成功。两次完整冷启动分别收到通用 `503` 和明确的系统容量限流。
+- subagent/commit：Claude Code 是课程要求的陌生智能体，不是 Codex subagent；没有产出源码或 commit，隔离 worktree 跟踪文件干净。
+- 人工干预：用户提供 DeepSeek 官方文档入口并要求评估手动与自动方式的差异；Key 未写入本文件、配置或新提交。
+- 教训：OpenAI 风格 Base URL 不能机械复制给 Anthropic SDK；自动化与手动启动共享协议，`--bare` 的认证限制才是本次实质差异。最小连通与长 Agent 任务稳定性必须分别验收。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |
@@ -133,7 +142,7 @@
 | `brainstorming` | 已使用 | P-001 至 P-009，产出设计依据并迭代正式 SPEC |
 | `receiving-code-review` | 已使用 | P-009，核对并落实用户第一轮 SPEC 审阅 |
 | `writing-plans` | 已使用 | P-010，依据已批准 SPEC 生成正式 PLAN |
-| `using-git-worktrees` | 未使用 | 等待陌生智能体冷启动完成后再创建首个实现 worktree |
+| `using-git-worktrees` | 已使用 | P-011，创建可舍弃的 Claude 冷启动 worktree；正式实现 worktree 尚未创建 |
 | `subagent-driven-development` / `executing-plans` | 未使用 | PLAN 已生成，但实现仍被冷启动门禁阻挡 |
 | `test-driven-development` | 未使用 | 实现尚未开始 |
 | `requesting-code-review` | 未使用 | 尚无实现 task 可评审 |
