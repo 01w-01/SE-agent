@@ -202,6 +202,7 @@
 - 提交：`901533a feat: 定义 Harness 核心契约`、`3f75989 fix: 修正 Action 非空校验`、`37e28ee fix: 收紧 Action 字段类型校验`。
 - 最终验证：模型测试 `59 passed`、全量 `65 passed`、Ruff、累计 `git diff --check` 均通过；独立 reviewer 最终为 0 Critical、0 Important、0 Minor，`APPROVED`。
 - 安全与边界：只修改 Task 2 四个白名单文件；没有真实 I/O、CLI、Workspace、Parser、Policy 或 `ApplicationService` 提前实现；凭据内容未写入源码、报告或新提交。
+- 分支已推送；PR：[PR #2](https://github.com/01w-01/SE-agent/pull/2)。
 
 ## 3. 当前关键决定
 
