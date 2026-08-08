@@ -679,7 +679,8 @@ git commit -m "feat: 添加声明式安全配置"
 
 **实现记录（2026-08-09）：** 实现提交 `81e6c58`；独立评审后的修复提交
 `a9a3586`。最终验证为配置测试 `28 passed`、全量测试 `93 passed`、Ruff 和
-`git diff --check` 均通过；review/fix round 1 clean。PR 链接在创建后补录。
+`git diff --check` 均通过；review/fix round 1 clean。PR：
+[PR #3](https://github.com/01w-01/SE-agent/pull/3)。
 
 ---
 

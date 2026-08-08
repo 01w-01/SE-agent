@@ -212,6 +212,7 @@
 - 修复：新增 9 个真实边界测试，先观察 `19 passed, 9 failed`，再统一安全错误并拒绝 `@argfile`；提交 `a9a3586 fix: 收紧配置文件与 pytest 参数边界`。原实现提交为 `81e6c58 feat: 添加声明式安全配置`。
 - 最终验证：配置测试 `28 passed`、全量 `93 passed`、Ruff 和累计 `git diff --check` 通过；scoped re-review 判定三项全部 ADDRESSED，0 新 Critical / Important / Minor。
 - 安全与边界：只修改 Task 3 两个白名单文件；错误不含配置值、路径或底层解析文本；没有 shell、CLI 终端依赖或秘密字段进入配置。
+- 分支已推送；PR：[PR #3](https://github.com/01w-01/SE-agent/pull/3)。
 
 ## 3. 当前关键决定
 
