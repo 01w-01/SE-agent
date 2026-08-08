@@ -245,3 +245,4 @@ brainstorming 主要推动了以下问题从模糊想法变成可验证决定：
 - 编码诊断确认 `subprocess.run(..., text=True)` 使用 Windows 默认代码页错误解码 Git 输出的 UTF-8 中文路径：Git 结果字符串码点与文件系统实际名称不同；
 - 缺陷归因：PLAN 的测试片段没有显式定义 Git 路径输出编码，违反 Windows 优先目标。修订为 `git ls-files -z` 返回原始字节，再逐项严格 UTF-8 解码；NUL 分隔也避免文件名换行造成歧义；
 - Gate 2 仍未完成，Task 1 尚未绿色，Task 2 未开始。Gate 4 重新打开，等待用户批准此项 PLAN 修订后才允许 Claude 继续。
+- 用户于 2026-08-09 再次明确回复“批准”，接受 `git ls-files -z` 与逐路径 UTF-8 解码修订；Gate 4 再次完成，可以保留当前未提交试做产物继续 Task 1，而不是从头重做已验证过的 RED 阶段。
