@@ -47,6 +47,46 @@ class FailingKeyring(FakeKeyring):
         super().delete_password(service, account)
 
 
+class DeleteDeniedKeyring(FakeKeyring):
+    def __init__(self, backend_text: str) -> None:
+        super().__init__()
+        self.backend_text = backend_text
+
+    def delete_password(self, service: str, account: str) -> None:
+        raise PasswordDeleteError(self.backend_text)
+
+
+def assert_exception_is_sanitized(
+    error: BaseException, *, secret: str, backend_text: str
+) -> None:
+    pending = [error]
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+
+        details = "".join(
+            (
+                str(current),
+                repr(current),
+                "".join(
+                    traceback.format_exception(
+                        type(current), current, current.__traceback__, chain=False
+                    )
+                ),
+            )
+        )
+        assert secret not in details
+        assert backend_text not in details
+        assert current.__context__ is None
+        assert current.__cause__ is None
+        for related in (current.__context__, current.__cause__):
+            if related is not None:
+                pending.append(related)
+
+
 def test_credential_lifecycle_never_returns_value_from_status() -> None:
     backend = FakeKeyring()
     store = KeyringCredentialStore(backend=backend)
@@ -87,7 +127,12 @@ def test_clearing_a_missing_credential_returns_false() -> None:
 @pytest.mark.parametrize("operation", ["get", "set", "clear"])
 def test_keyring_errors_do_not_include_secret(operation: str) -> None:
     secret = "temporary-value"
-    store = KeyringCredentialStore(backend=FailingKeyring(operation, secret))
+    backend = FailingKeyring(operation, secret)
+    store = KeyringCredentialStore(backend=backend)
+    backend_text = f"backend rejected {secret}"
+
+    if operation == "clear":
+        backend.values[("fbw-harness", "default")] = secret
 
     with pytest.raises(CredentialError) as error:
         if operation == "get":
@@ -97,9 +142,27 @@ def test_keyring_errors_do_not_include_secret(operation: str) -> None:
         else:
             store.clear()
 
-    assert secret not in str(error.value)
-    assert secret not in "".join(
-        traceback.format_exception(error.type, error.value, error.tb)
+    assert_exception_is_sanitized(
+        error.value,
+        secret=secret,
+        backend_text=backend_text,
+    )
+
+
+def test_clear_raises_sanitized_error_when_present_credential_cannot_be_deleted() -> None:
+    secret = "temporary-value"
+    backend_text = f"access denied for {secret}"
+    backend = DeleteDeniedKeyring(backend_text)
+    backend.values[("fbw-harness", "default")] = secret
+    store = KeyringCredentialStore(backend=backend)
+
+    with pytest.raises(CredentialError) as error:
+        store.clear()
+
+    assert_exception_is_sanitized(
+        error.value,
+        secret=secret,
+        backend_text=backend_text,
     )
 
 
