@@ -74,8 +74,8 @@ def _require_non_blank(value: object, field_name: str) -> None:
 
 
 def _require_non_empty(value: object, field_name: str) -> None:
-    if value is None or value == "":
-        raise ModelValidationError(f"{field_name} must be non-empty")
+    if not isinstance(value, str) or value == "":
+        raise ModelValidationError(f"{field_name} must be a non-empty string")
 
 
 class ActionKind(str, Enum):
