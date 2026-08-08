@@ -194,6 +194,16 @@
 - 评审：1 个 Important（真实临时 Git 仓库命中分支缺覆盖）已在 fix round 1 修复；命名 Minor 延后处理。未记录凭据内容。
 - 分支已推送；PR：[PR #1](https://github.com/01w-01/SE-agent/pull/1)。
 
+### 2026-08-09 · P-021 · 正式 Task 2 核心契约实现与两轮修复
+
+- Superpowers 技能：`using-git-worktrees`、`subagent-driven-development`、`test-driven-development`、`receiving-code-review`、`requesting-code-review`、`verification-before-completion`。
+- worktree：`D:\Codes\FBW-worktrees\task-02`；分支 `task/02-core-contracts`，基线 `bf8b053`。Task brief 抽取遗漏 §1 端口签名和部分固定字段后，控制器从已批准 SPEC/PLAN 与冷启动证据生成忽略的补充契约，再恢复同一 Task，没有扩大产品范围。
+- RED/GREEN：首次 RED 为缺少 `fbw_harness.errors`；实现后补充 `SessionState.touched_files` 规范化 RED。首轮 review 指出 Action 把“非空”误作“非空白”；修复后复审又发现非字符串类型被放过，均先写精确失败测试再最小修复。
+- 提交：`901533a feat: 定义 Harness 核心契约`、`3f75989 fix: 修正 Action 非空校验`、`37e28ee fix: 收紧 Action 字段类型校验`。
+- 最终验证：模型测试 `59 passed`、全量 `65 passed`、Ruff、累计 `git diff --check` 均通过；独立 reviewer 最终为 0 Critical、0 Important、0 Minor，`APPROVED`。
+- 安全与边界：只修改 Task 2 四个白名单文件；没有真实 I/O、CLI、Workspace、Parser、Policy 或 `ApplicationService` 提前实现；凭据内容未写入源码、报告或新提交。
+- 分支已推送；PR：[PR #2](https://github.com/01w-01/SE-agent/pull/2)。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |

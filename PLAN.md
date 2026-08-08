@@ -318,7 +318,7 @@ review/fix round 1 clean。PR：[PR #1](https://github.com/01w-01/SE-agent/pull/
 - Consumes: Task 1 的 Python 包。
 - Produces: `ActionKind`、`PolicyLevel`、`FeedbackKind`、`RunStatus`、`Action`、`PolicyContext`、`PolicyDecision`、`Observation`、`Feedback`、`TestResult`、`SessionState`、`TransactionRecord`、`ProjectMemory`、`RunRequest`、`RunEvent`、`ApprovalRequest`、`RawToolCall`、`RawDecision`、`RunResult`；以及 §1 的五个 Protocol。`ApplicationService` 在 Task 11 的 `app.py` 实现，不在 `ports.py` 重复声明同名 Protocol。
 
-- [ ] **Step 1: 写模型不变量失败测试**
+- [x] **Step 1: 写模型不变量失败测试**
 
 ```python
 @pytest.mark.parametrize("expected_sha256", [None, ""])
@@ -466,13 +466,13 @@ def test_approval_request_normalizes_sequence_fields() -> None:
     assert request.affected_paths == ("src/a.py",)
 ```
 
-- [ ] **Step 2: 运行测试并确认缺少模型**
+- [x] **Step 2: 运行测试并确认缺少模型**
 
 Run: `uv run --project mini-harness pytest mini-harness/tests/test_models.py -v`
 
 Expected: FAIL with import error for `fbw_harness.models`.
 
-- [ ] **Step 3: 实现枚举与不可变 dataclass**
+- [x] **Step 3: 实现枚举与不可变 dataclass**
 
 所有外部可见模型使用 `@dataclass(frozen=True, slots=True)`。所有 `Mapping`、list、tuple、set/frozenset 输入必须在构造时递归防御性复制并冻结：Mapping 变为只读 Mapping，序列变为 tuple，集合变为 frozenset；调用者后续修改原对象不得改变模型。`RunRequest.config_overrides` 与 `RunEvent.payload` 在任意嵌套层级按大小写不敏感方式拒绝键名 `api_key`、`authorization`、`headers`、`file_content`。循环容器、非字符串 Mapping 键或无法冻结的对象形成 `ModelValidationError`，不得递归失控。只读 Mapping 不要求能被标准 `json.dumps` 直接处理；Task 12 的 JSONL 输出边界负责递归转换为普通 JSON 容器。
 
@@ -553,7 +553,7 @@ class ModelValidationError(InputError):
     pass
 ```
 
-- [ ] **Step 4: 定义 Protocol 并验证运行期替身**
+- [x] **Step 4: 定义 Protocol 并验证运行期替身**
 
 `ports.py` 只定义 EventSink、ApprovalProvider、CredentialStore、LLMClient、LLMClientFactory 五个 `@runtime_checkable` Protocol，并使用 §1 的精确签名；不得提前定义 `ApplicationService` Protocol。新增：
 
@@ -565,7 +565,7 @@ class LLMClientFactory(Protocol):
 
 测试 Fake EventSink、ApprovalProvider、CredentialStore、LLMClient 和 LLMClientFactory 均可通过 `isinstance(fake, ProtocolType)`。
 
-- [ ] **Step 5: 运行模型测试和全量测试**
+- [x] **Step 5: 运行模型测试和全量测试**
 
 Run: `uv run --project mini-harness pytest mini-harness/tests/test_models.py -v`
 
@@ -573,7 +573,7 @@ Run: `uv run --project mini-harness pytest -q`
 
 Expected: PASS。
 
-- [ ] **Step 6: 重构、lint 并提交**
+- [x] **Step 6: 重构、lint 并提交**
 
 Run: `uv run --project mini-harness ruff check mini-harness/src mini-harness/tests`
 
@@ -581,6 +581,11 @@ Run: `uv run --project mini-harness ruff check mini-harness/src mini-harness/tes
 git add -- mini-harness/src/fbw_harness/models.py mini-harness/src/fbw_harness/ports.py mini-harness/src/fbw_harness/errors.py mini-harness/tests/test_models.py
 git commit -m "feat: 定义 Harness 核心契约"
 ```
+
+**实现记录（2026-08-09）：** 实现提交 `901533a`；两轮独立评审后的修复提交
+`3f75989`、`37e28ee`。最终验证为模型测试 `59 passed`、全量测试 `65 passed`、
+Ruff 和 `git diff --check` 均通过；review/fix round 2 clean。PR：
+[PR #2](https://github.com/01w-01/SE-agent/pull/2)。
 
 ---
 
