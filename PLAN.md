@@ -199,7 +199,7 @@ Task 13 -> Task 14 最终门禁/发布
 - Consumes: Git 当前树和 SPEC 的 Python/凭据约束。
 - Produces: 可导入的 `fbw_harness` 包、`__version__ == "0.1.0"`、console script 名 `fbw-harness`、不泄露匹配内容的当前树扫描脚本。
 
-- [ ] **Step 1: 写包与秘密扫描失败测试**
+- [x] **Step 1: 写包与秘密扫描失败测试**
 
 ```python
 from __future__ import annotations
@@ -242,13 +242,13 @@ def test_secret_scan_fails_closed_when_git_is_unavailable(tmp_path: Path) -> Non
     assert result.stderr.strip() == "secret scan failed"
 ```
 
-- [ ] **Step 2: 运行测试并确认按预期失败**
+- [x] **Step 2: 运行测试并确认按预期失败**
 
 Run: `uv run --project mini-harness pytest mini-harness/tests/test_package_smoke.py -v`
 
 Expected: FAIL；至少包含 `ModuleNotFoundError: fbw_harness`，并列出当前树中旧原型文件命中。
 
-- [ ] **Step 3: 配置项目与包入口**
+- [x] **Step 3: 配置项目与包入口**
 
 将 `mini-harness/pyproject.toml` 固定为 `requires-python = ">=3.13,<3.14"`，项目名改为 `fbw-harness`，添加运行依赖 `openai>=2.44,<3`、`keyring>=25.6,<26`，开发依赖 `pytest>=8.4,<9`、`pytest-timeout>=2.4,<3`、`ruff>=0.12,<1`、`pyinstaller>=6.15,<7`，并配置：
 
@@ -271,13 +271,13 @@ line-length = 100
 __version__ = "0.1.0"
 ```
 
-- [ ] **Step 4: 移除当前树旧原型并添加安全扫描脚本**
+- [x] **Step 4: 移除当前树旧原型并添加安全扫描脚本**
 
 Run: `git rm -- mini-harness/agent.py mini-harness/test.txt detect-api.ps1`
 
 `scripts/scan-current-tree.ps1` 使用 `git grep -I -l -E 'sk-[A-Za-z0-9]{12,}' -- .`，只输出命中文件路径，不得打印匹配行或 Key。必须先保存原生命令退出码并精确分支：`0` 表示有命中，输出路径后返回 `1`；`1` 表示无命中，返回 `0`；其他退出码必须抑制原生 Git stderr，只向 stderr 输出固定文本 `secret scan failed` 并返回 `2`。不得把 Git 不可用、非仓库、权限或仓库损坏误报为安全。这只清理当前树，不重写既有 commit。
 
-- [ ] **Step 5: 更新锁文件并运行绿色验证**
+- [x] **Step 5: 更新锁文件并运行绿色验证**
 
 Run: `uv lock --project mini-harness --python 3.13`
 
@@ -287,7 +287,7 @@ Run: `pwsh -NoProfile -File scripts/scan-current-tree.ps1`
 
 Expected: 两条命令均 PASS/退出 `0`，扫描输出不含秘密值。
 
-- [ ] **Step 6: 运行格式检查并提交**
+- [x] **Step 6: 运行格式检查并提交**
 
 Run: `uv run --project mini-harness ruff check mini-harness/src mini-harness/tests`
 
@@ -297,6 +297,10 @@ Expected: `All checks passed!`
 git add -- mini-harness scripts/scan-current-tree.ps1
 git commit -m "chore: 建立安全项目骨架"
 ```
+
+**实现记录（2026-08-09）：** 实现提交 `c5ed568`；独立评审后的修复提交
+`1c8c001`。验证为 `6 passed`、Ruff、当前树扫描和 `git diff --check` 均通过；独立
+review/fix round 1 clean。PR：[PR #1](https://github.com/01w-01/SE-agent/pull/1)。
 
 ---
 

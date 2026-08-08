@@ -184,6 +184,16 @@
 - 清理结果：确认临时分支无独有 commit 后，按 PLAN 删除 `D:\Codes\FBW-worktrees\cold-start-claude` 和 `cold-start/claude-spec-plan`；未提交试做代码不可从 commit 恢复，正式过程证据保留在 `main`。
 - 人工判断：Gate 2 标记完成。正式 Task 1 仍受“缺少 NJU Git/GitHub remote URL”门禁阻挡。
 
+### 2026-08-09 · P-020 · 正式 Task 1 实现与独立评审修复
+
+- Superpowers 技能：`using-git-worktrees`、`subagent-driven-development`、`test-driven-development`、`receiving-code-review`；另有独立 reviewer 只读审查。
+- worktree：`.worktrees` 路径偏差已纠正为 PLAN 指定的 sibling worktree `D:\Codes\FBW-worktrees\task-01`；在独立 `task/01-package-skeleton` 分支执行。
+- RED/GREEN 证据：先观察到未声明 pytest，继而观察到包缺失、旧原型命中与扫描器缺失；扫描器额外覆盖 Git 不可用、Git executable 不在 PATH、原生命令错误处理开启，以及真实临时 Git 仓库命中分支。命中分支临时破坏后，测试按预期因错误退出码和错误输出失败；撤回破坏后恢复绿色。
+- 验证：定向 smoke 与全量 pytest 均为 `6 passed`；Ruff、正常当前树扫描和 `git diff --check` 通过。
+- 提交：实现 `c5ed568 chore: 建立安全项目骨架`；review-fix `1c8c001 test: 覆盖秘密扫描命中分支`。
+- 评审：1 个 Important（真实临时 Git 仓库命中分支缺覆盖）已在 fix round 1 修复；命名 Minor 延后处理。未记录凭据内容。
+- 分支已推送；PR：[PR #1](https://github.com/01w-01/SE-agent/pull/1)。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |
