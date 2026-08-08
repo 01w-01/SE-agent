@@ -1,33 +1,11 @@
 from __future__ import annotations
 
-from pathlib import PurePosixPath, PureWindowsPath
+from pathlib import PurePosixPath
 
 from .models import Action, ApprovalRequest, PolicyContext, PolicyDecision, PolicyLevel
 from .ports import ApprovalProvider
-from .workspace import PolicyDeniedError, Workspace
+from .workspace import PolicyDeniedError, Workspace, _is_protected_name, _relative_parts
 
-_PROTECTED_EXACT_NAMES = frozenset(
-    {
-        ".git",
-        ".venv",
-        "venv",
-        "__pycache__",
-        ".pytest_cache",
-        ".ruff_cache",
-        ".mypy_cache",
-        "node_modules",
-        ".fbw-recovery",
-        ".credentials",
-        ".secrets",
-        ".aws",
-        ".ssh",
-        ".azure",
-        "build",
-        "dist",
-        ".eggs",
-        "credentials.json",
-    }
-)
 _DEPENDENCY_BASENAMES = frozenset(
     {
         "pyproject.toml",
@@ -51,6 +29,14 @@ _DEPENDENCY_BASENAMES = frozenset(
         "gemfile.lock",
         "composer.json",
         "composer.lock",
+        "pom.xml",
+        "build.gradle",
+        "build.gradle.kts",
+        "gradle.lockfile",
+        "deno.json",
+        "deno.jsonc",
+        "deno.lock",
+        "bun.lock",
     }
 )
 _CI_RELEASE_BASENAMES = frozenset(
@@ -67,7 +53,12 @@ _CI_RELEASE_BASENAMES = frozenset(
         "release.yaml",
         "workflow.yml",
         "workflow.yaml",
+        "build.yml",
+        "build.yaml",
     }
+)
+_DANGEROUS_CAPABILITIES = frozenset(
+    {"network", "process", "registry", "dependency", "ci", "release"}
 )
 
 
@@ -85,12 +76,13 @@ class PolicyEngine:
     def evaluate(self, action: Action, context: PolicyContext) -> PolicyDecision:
         """Return the first matching rule while retaining every sanitized risk fact."""
         facts: list[tuple[str, str]] = []
-        normalized_path = ""
+        normalized_path: str | None = None
 
         if action.path is not None:
             normalized_path, escapes = _normalize_path(action.path)
             if escapes:
                 facts.append(("DENY_PATH_ESCAPE", "path_escape"))
+                facts.extend(_invalid_path_facts(action.path))
             else:
                 if _has_protected_segment(normalized_path):
                     facts.append(("DENY_PROTECTED_PATH", f"protected_path:{normalized_path}"))
@@ -109,7 +101,7 @@ class PolicyEngine:
         if action.path is not None and context.changed_line_count > self._normal_change_line_limit:
             facts.append(("CONFIRM_LARGE_CHANGE", f"large_change:{context.changed_line_count}"))
 
-        for capability in sorted(_sanitize_capabilities(context.dangerous_capabilities)):
+        for capability in _sanitize_capabilities(context.dangerous_capabilities):
             facts.append(("CONFIRM_DANGEROUS_CAPABILITY", f"dangerous_capability:{capability}"))
 
         if facts:
@@ -145,33 +137,28 @@ def authorize(
     return provider.confirm(request)
 
 
-def _normalize_path(path: str) -> tuple[str, bool]:
-    normalized = path.replace("\\", "/")
-    windows_path = PureWindowsPath(path)
-    if (
-        not path
-        or "\x00" in path
-        or windows_path.drive
-        or windows_path.is_absolute()
-        or normalized.startswith("/")
-    ):
-        return normalized, True
-    parts = PurePosixPath(normalized).parts
-    if not parts or any(part == ".." for part in parts):
-        return normalized, True
-    return "/".join(parts), False
+def _normalize_path(path: str) -> tuple[str | None, bool]:
+    try:
+        return "/".join(_relative_parts(path)), False
+    except PolicyDeniedError:
+        return None, True
 
 
 def _has_protected_segment(path: str) -> bool:
-    for part in PurePosixPath(path).parts:
-        canonical = part.rstrip(" .").casefold()
-        if (
-            canonical in _PROTECTED_EXACT_NAMES
-            or canonical.startswith(".env")
-            or canonical.endswith(".egg-info")
-        ):
-            return True
-    return False
+    return any(_is_protected_name(part) for part in PurePosixPath(path).parts)
+
+
+def _invalid_path_facts(path: str) -> list[tuple[str, str]]:
+    """Retain fixed, non-secret facts when the canonical path checker rejects input."""
+    parts = tuple(part for part in path.replace("\\", "/").split("/") if part)
+    facts: list[tuple[str, str]] = []
+    if any(_is_protected_name(part) for part in parts):
+        facts.append(("DENY_PROTECTED_PATH", "protected_path"))
+    if parts and _is_dependency_basename(parts[-1]):
+        facts.append(("CONFIRM_DEPENDENCY", "dependency_manifest"))
+    if _is_ci_or_release_parts(parts):
+        facts.append(("CONFIRM_CI_RELEASE", "ci_release_config"))
+    return facts
 
 
 def _workspace_path_is_safe(workspace: Workspace, path: str) -> bool:
@@ -183,31 +170,52 @@ def _workspace_path_is_safe(workspace: Workspace, path: str) -> bool:
 
 
 def _is_dependency_path(path: str) -> bool:
-    basename = PurePosixPath(path).name.casefold()
-    return basename in _DEPENDENCY_BASENAMES or (
-        basename.startswith("requirements") and basename.endswith(".txt")
+    return _is_dependency_basename(PurePosixPath(path).name)
+
+
+def _is_dependency_basename(basename: str) -> bool:
+    canonical = basename.casefold()
+    return canonical in _DEPENDENCY_BASENAMES or (
+        canonical.startswith("requirements") and canonical.endswith(".txt")
     )
 
 
 def _is_ci_or_release_path(path: str) -> bool:
-    parts = tuple(part.casefold() for part in PurePosixPath(path).parts)
-    basename = parts[-1]
-    return ".github" in parts or basename in _CI_RELEASE_BASENAMES
+    return _is_ci_or_release_parts(PurePosixPath(path).parts)
+
+
+def _is_ci_or_release_parts(parts: tuple[str, ...]) -> bool:
+    if not parts:
+        return False
+    canonical_parts = tuple(part.casefold() for part in parts)
+    basename = canonical_parts[-1]
+    return ".github" in canonical_parts or basename in _CI_RELEASE_BASENAMES
 
 
 def _is_dirty_path(path: str, dirty_paths: frozenset[str]) -> bool:
-    return path in {
-        normalized
+    return path.casefold() in {
+        normalized.casefold()
         for dirty_path in dirty_paths
         for normalized, escaped in (_normalize_path(dirty_path),)
-        if not escaped
+        if not escaped and normalized is not None
     }
 
 
-def _sanitize_capabilities(capabilities: frozenset[str]) -> frozenset[str]:
-    return frozenset(
-        capability.strip().casefold() for capability in capabilities if capability.strip()
-    )
+def _sanitize_capabilities(capabilities: frozenset[str]) -> tuple[str, ...]:
+    known: set[str] = set()
+    unknown = False
+    for capability in capabilities:
+        if not isinstance(capability, str):
+            unknown = True
+            continue
+        canonical = capability.strip().casefold()
+        if canonical in _DANGEROUS_CAPABILITIES:
+            known.add(canonical)
+        else:
+            unknown = True
+    if unknown:
+        known.add("unknown")
+    return tuple(sorted(known))
 
 
 def _level_for_rule(rule_id: str) -> PolicyLevel:

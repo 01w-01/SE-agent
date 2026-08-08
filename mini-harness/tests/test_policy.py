@@ -37,6 +37,27 @@ def test_path_escape_is_denied_with_its_stable_rule_id(path: str) -> None:
     assert decision.rule_id == "DENY_PATH_ESCAPE"
 
 
+@pytest.mark.parametrize(
+    "path",
+    ["NUL", "safe.txt::$DATA", "wild?.py", "control\x01.py", "trailing. "],
+)
+def test_workspace_syntax_rejections_are_denied_without_a_workspace(path: str) -> None:
+    """Catches policy accepting Windows-unsafe names that Workspace would reject."""
+    decision = PolicyEngine().evaluate(Action(ActionKind.READ_FILE, path=path), PolicyContext())
+
+    assert decision.level is PolicyLevel.DENY
+    assert decision.rule_id == "DENY_PATH_ESCAPE"
+
+
+def test_path_escape_retains_other_fixed_risk_facts() -> None:
+    """Catches early traversal denial discarding independently recognizable protected risks."""
+    decision = PolicyEngine().evaluate(edit_action("../.git/pyproject.toml"), PolicyContext())
+
+    assert decision.level is PolicyLevel.DENY
+    assert decision.rule_id == "DENY_PATH_ESCAPE"
+    assert decision.risk_facts == ("path_escape", "protected_path", "dependency_manifest")
+
+
 @pytest.mark.parametrize("path", [".git/config", ".env", "nested/.ssh/id_ed25519"])
 def test_protected_path_is_denied_before_confirmation_rules(path: str) -> None:
     """Catches credentials or control metadata reaching approval instead of denial."""
@@ -70,6 +91,16 @@ def test_workspace_reparse_path_is_denied_with_reparse_rule(
     assert decision.rule_id == "DENY_REPARSE_POINT"
 
 
+def test_injected_workspace_keeps_syntax_rejection_distinct_from_reparse(tmp_path: Path) -> None:
+    """Catches an unsafe name being mislabeled as a reparse failure when Workspace is present."""
+    decision = PolicyEngine(Workspace(tmp_path)).evaluate(
+        Action(ActionKind.READ_FILE, path="safe.txt::$DATA"), PolicyContext()
+    )
+
+    assert decision.level is PolicyLevel.DENY
+    assert decision.rule_id == "DENY_PATH_ESCAPE"
+
+
 @pytest.mark.parametrize(
     ("path", "context", "rule_id"),
     [
@@ -96,6 +127,81 @@ def test_each_high_risk_fact_requires_its_stable_confirmation_rule(
 
     assert decision.level is PolicyLevel.CONFIRM
     assert decision.rule_id == rule_id
+
+
+def test_dirty_path_matching_is_case_insensitive_and_accepts_windows_separators() -> None:
+    """Catches an already-dirty Windows path being missed after casing or separator changes."""
+    decision = PolicyEngine().evaluate(
+        edit_action("Src/Config.py"),
+        PolicyContext(dirty_paths=frozenset({"src\\config.PY"})),
+    )
+
+    assert decision.level is PolicyLevel.CONFIRM
+    assert decision.rule_id == "CONFIRM_DIRTY_PATH"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "pom.xml",
+        "build.gradle",
+        "build.gradle.kts",
+        "gradle.lockfile",
+        "deno.json",
+        "deno.jsonc",
+        "deno.lock",
+        "bun.lock",
+        "Cargo.toml",
+        "Cargo.lock",
+        "go.mod",
+        "go.sum",
+        "composer.json",
+        "composer.lock",
+        "Gemfile",
+        "Gemfile.lock",
+    ],
+)
+def test_supported_manifest_and_lock_files_require_confirmation(path: str) -> None:
+    """Catches an ecosystem manifest or lock file bypassing dependency confirmation."""
+    decision = PolicyEngine().evaluate(edit_action(path), PolicyContext())
+
+    assert decision.level is PolicyLevel.CONFIRM
+    assert decision.rule_id == "CONFIRM_DEPENDENCY"
+
+
+def test_build_configuration_requires_ci_release_confirmation() -> None:
+    """Catches build pipeline configuration being treated as an ordinary source edit."""
+    decision = PolicyEngine().evaluate(edit_action("build.yml"), PolicyContext())
+
+    assert decision.level is PolicyLevel.CONFIRM
+    assert decision.rule_id == "CONFIRM_CI_RELEASE"
+
+
+def test_unknown_capabilities_are_confirmed_without_leaking_untrusted_text() -> None:
+    """Catches arbitrary capability text reaching the approval UI as a risk fact."""
+    secret = "token=private\x01"
+    decision = PolicyEngine().evaluate(
+        edit_action("src/a.py"),
+        PolicyContext(dangerous_capabilities=frozenset({"network", secret, "future_feature"})),
+    )
+
+    assert decision.level is PolicyLevel.CONFIRM
+    assert decision.rule_id == "CONFIRM_DANGEROUS_CAPABILITY"
+    assert decision.risk_facts == (
+        "dangerous_capability:network",
+        "dangerous_capability:unknown",
+    )
+    assert secret not in " ".join(decision.risk_facts)
+
+
+def test_blank_capability_is_treated_as_unknown() -> None:
+    """Catches an undeclared blank capability silently bypassing mandatory confirmation."""
+    decision = PolicyEngine().evaluate(
+        edit_action("src/a.py"), PolicyContext(dangerous_capabilities=frozenset({"  "}))
+    )
+
+    assert decision.level is PolicyLevel.CONFIRM
+    assert decision.risk_facts == ("dangerous_capability:unknown",)
 
 
 def test_all_applicable_risk_facts_are_retained_in_priority_order() -> None:
