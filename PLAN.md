@@ -173,9 +173,9 @@ Task 13 -> Task 14 最终门禁/发布
 
   在 `SPEC_PROCESS.md` 记录停顿点、错误解读、产出差距和缺陷归因；在 `AGENT_LOG.md` 记录智能体类型、输入文件、输出摘要和人工判断。
 
-- [x] **Gate 4：修订并重新批准**
+- [ ] **Gate 4：修订并重新批准**
 
-  若发现歧义，先修改 `SPEC.md`/`PLAN.md`，给出关键 diff，自检并由用户重新批准。当前确认的缺陷均只影响 PLAN：先修正冷启动任务顺序，再修正 Windows 下 Git 路径输出的显式 UTF-8 解码；不修改已批准 SPEC。每次修订经用户批准后才继续 Gate 2。冷启动 worktree 不合并，验证结束后安全移除。
+  若发现歧义，先修改 `SPEC.md`/`PLAN.md`，给出关键 diff，自检并由用户重新批准。当前确认的缺陷均只影响 PLAN：冷启动任务顺序、Windows Git 路径解码、扫描器 fail-closed、模型深度不可变与动作不变量；不修改已批准 SPEC。每次修订经用户批准后才继续 Gate 2。冷启动 worktree 不合并，验证结束后安全移除。
 
 ---
 
@@ -224,6 +224,22 @@ def test_tracked_worktree_has_no_api_key_pattern() -> None:
     pattern = re.compile(rb"sk-[A-Za-z0-9]{12,}")
     hits = [path for path in files if pattern.search((root / path).read_bytes())]
     assert hits == []
+
+
+def test_secret_scan_fails_closed_when_git_is_unavailable(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[2]
+    script = root / "scripts/scan-current-tree.ps1"
+    assert script.is_file()
+    result = subprocess.run(
+        ["pwsh", "-NoProfile", "-File", str(script)],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert result.stderr.strip() == "secret scan failed"
 ```
 
 - [ ] **Step 2: 运行测试并确认按预期失败**
@@ -249,7 +265,7 @@ target-version = "py313"
 line-length = 100
 ```
 
-在 `mini-harness/src/fbw_harness/__init__.py` 写入：
+`mini-harness/README.md` 必须包含指向根目录正式说明的相对链接 `[项目总 README](../README.md)`。在 `mini-harness/src/fbw_harness/__init__.py` 写入：
 
 ```python
 __version__ = "0.1.0"
@@ -259,7 +275,7 @@ __version__ = "0.1.0"
 
 Run: `git rm -- mini-harness/agent.py mini-harness/test.txt detect-api.ps1`
 
-`scripts/scan-current-tree.ps1` 使用 `git grep -I -l -E 'sk-[A-Za-z0-9]{12,}' -- .`，只输出命中文件路径并返回 `1`，不得打印匹配行或 Key；无命中返回 `0`。这只清理当前树，不重写既有 commit。
+`scripts/scan-current-tree.ps1` 使用 `git grep -I -l -E 'sk-[A-Za-z0-9]{12,}' -- .`，只输出命中文件路径，不得打印匹配行或 Key。必须先保存原生命令退出码并精确分支：`0` 表示有命中，输出路径后返回 `1`；`1` 表示无命中，返回 `0`；其他退出码必须抑制原生 Git stderr，只向 stderr 输出固定文本 `secret scan failed` 并返回 `2`。不得把 Git 不可用、非仓库、权限或仓库损坏误报为安全。这只清理当前树，不重写既有 commit。
 
 - [ ] **Step 5: 更新锁文件并运行绿色验证**
 
@@ -296,14 +312,21 @@ git commit -m "chore: 建立安全项目骨架"
 
 **Interfaces:**
 - Consumes: Task 1 的 Python 包。
-- Produces: `ActionKind`、`PolicyLevel`、`FeedbackKind`、`RunStatus`、`Action`、`PolicyContext`、`PolicyDecision`、`Observation`、`Feedback`、`TestResult`、`SessionState`、`TransactionRecord`、`ProjectMemory`、`RunRequest`、`RunEvent`、`ApprovalRequest`、`RawToolCall`、`RawDecision`、`RunResult`；以及 §1 的四个 Protocol。
+- Produces: `ActionKind`、`PolicyLevel`、`FeedbackKind`、`RunStatus`、`Action`、`PolicyContext`、`PolicyDecision`、`Observation`、`Feedback`、`TestResult`、`SessionState`、`TransactionRecord`、`ProjectMemory`、`RunRequest`、`RunEvent`、`ApprovalRequest`、`RawToolCall`、`RawDecision`、`RunResult`；以及 §1 的五个 Protocol。`ApplicationService` 在 Task 11 的 `app.py` 实现，不在 `ports.py` 重复声明同名 Protocol。
 
 - [ ] **Step 1: 写模型不变量失败测试**
 
 ```python
-def test_edit_action_requires_hash_and_exact_text() -> None:
+@pytest.mark.parametrize("expected_sha256", [None, ""])
+def test_edit_action_requires_non_empty_hash(expected_sha256: str | None) -> None:
     with pytest.raises(ModelValidationError, match="expected_sha256"):
-        Action(kind=ActionKind.EDIT_FILE, path="src/a.py", old_text="x", new_text="y")
+        Action(
+            kind=ActionKind.EDIT_FILE,
+            path="src/a.py",
+            expected_sha256=expected_sha256,
+            old_text="x",
+            new_text="y",
+        )
 
 
 def test_run_request_rejects_blank_task() -> None:
@@ -314,6 +337,129 @@ def test_run_request_rejects_blank_task() -> None:
 def test_run_event_payload_rejects_secret_field() -> None:
     with pytest.raises(ModelValidationError, match="secret field"):
         RunEvent("run-1", "state", "start", {"api_key": "value"})
+
+
+def test_run_event_rejects_nested_case_insensitive_secret_field() -> None:
+    with pytest.raises(ModelValidationError, match="secret field"):
+        RunEvent("run-1", "state", "start", {"meta": {"Authorization": "value"}})
+
+
+def test_run_event_defensively_freezes_nested_payload() -> None:
+    source = {"meta": {"summary": "ok"}}
+    event = RunEvent("run-1", "state", "start", source)
+    source["meta"]["summary"] = "mutated"  # type: ignore[index]
+    assert event.payload["meta"]["summary"] == "ok"  # type: ignore[index]
+    with pytest.raises(TypeError):
+        event.payload["late"] = "value"  # type: ignore[index]
+
+
+def test_run_request_rejects_secret_and_freezes_overrides() -> None:
+    source = {"nested": {"limit": 1}}
+    request = RunRequest(
+        Path("project"),
+        "task",
+        "https://example.test/v1",
+        "model",
+        config_overrides=source,
+    )
+    source["nested"]["limit"] = 2  # type: ignore[index]
+    assert request.config_overrides["nested"]["limit"] == 1  # type: ignore[index]
+    with pytest.raises(ModelValidationError, match="secret field"):
+        RunRequest(
+            Path("project"),
+            "task",
+            "https://example.test/v1",
+            "model",
+            config_overrides={"nested": {"HEADERS": "value"}},
+        )
+
+
+def test_recursive_container_is_rejected_without_recursion_error() -> None:
+    recursive: dict[str, object] = {}
+    recursive["self"] = recursive
+    with pytest.raises(ModelValidationError, match="recursive"):
+        RunEvent("run-1", "state", "start", recursive)
+
+
+def test_non_string_mapping_key_and_unsupported_object_are_rejected() -> None:
+    with pytest.raises(ModelValidationError, match="string key"):
+        RunEvent("run-1", "state", "start", {1: "value"})  # type: ignore[dict-item]
+    with pytest.raises(ModelValidationError, match="unsupported"):
+        RunEvent("run-1", "state", "start", {"value": object()})
+
+
+@pytest.mark.parametrize(
+    ("kind", "kwargs"),
+    [
+        (ActionKind.READ_FILE, {}),
+        (ActionKind.CREATE_FILE, {"content": "x"}),
+        (
+            ActionKind.EDIT_FILE,
+            {"expected_sha256": "0" * 64, "old_text": "x", "new_text": "y"},
+        ),
+    ],
+)
+@pytest.mark.parametrize("path", [None, ""])
+def test_path_actions_require_non_empty_path(
+    kind: ActionKind, kwargs: dict[str, object], path: str | None
+) -> None:
+    with pytest.raises(ModelValidationError, match="path"):
+        Action(kind=kind, path=path, **kwargs)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "missing_field"),
+    [
+        ({"kind": ActionKind.CREATE_FILE, "path": "src/a.py"}, "content"),
+        (
+            {
+                "kind": ActionKind.EDIT_FILE,
+                "path": "src/a.py",
+                "expected_sha256": "0" * 64,
+                "new_text": "y",
+            },
+            "old_text",
+        ),
+        (
+            {
+                "kind": ActionKind.EDIT_FILE,
+                "path": "src/a.py",
+                "expected_sha256": "0" * 64,
+                "old_text": "",
+                "new_text": "y",
+            },
+            "old_text",
+        ),
+        (
+            {
+                "kind": ActionKind.EDIT_FILE,
+                "path": "src/a.py",
+                "expected_sha256": "0" * 64,
+                "old_text": "x",
+            },
+            "new_text",
+        ),
+        ({"kind": ActionKind.FINISH}, "reason"),
+    ],
+)
+def test_actions_reject_each_missing_required_field(
+    kwargs: dict[str, object], missing_field: str
+) -> None:
+    with pytest.raises(ModelValidationError, match=missing_field):
+        Action(**kwargs)  # type: ignore[arg-type]
+
+
+def test_fixed_result_models_require_all_contract_fields() -> None:
+    with pytest.raises(TypeError):
+        RawDecision()  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        RunResult(RunStatus.COMPLETED, "ok", 0)  # type: ignore[call-arg]
+
+
+def test_approval_request_normalizes_sequence_fields() -> None:
+    request = ApprovalRequest("R01", "reason", ["fact"], ["src/a.py"])  # type: ignore[arg-type]
+    assert request.risk_facts == ("fact",)
+    assert request.affected_paths == ("src/a.py",)
 ```
 
 - [ ] **Step 2: 运行测试并确认缺少模型**
@@ -324,7 +470,9 @@ Expected: FAIL with import error for `fbw_harness.models`.
 
 - [ ] **Step 3: 实现枚举与不可变 dataclass**
 
-所有外部可见模型使用 `@dataclass(frozen=True, slots=True)`；`Action` 在 `__post_init__` 中校验动作所需字段；`RunEvent` 拒绝键名集合 `api_key`、`authorization`、`headers`、`file_content`。`SessionState` 可变且只保存运行期计数、动作签名、反馈指纹和触碰路径。
+所有外部可见模型使用 `@dataclass(frozen=True, slots=True)`。所有 `Mapping`、list、tuple、set/frozenset 输入必须在构造时递归防御性复制并冻结：Mapping 变为只读 Mapping，序列变为 tuple，集合变为 frozenset；调用者后续修改原对象不得改变模型。`RunRequest.config_overrides` 与 `RunEvent.payload` 在任意嵌套层级按大小写不敏感方式拒绝键名 `api_key`、`authorization`、`headers`、`file_content`。循环容器、非字符串 Mapping 键或无法冻结的对象形成 `ModelValidationError`，不得递归失控。只读 Mapping 不要求能被标准 `json.dumps` 直接处理；Task 12 的 JSONL 输出边界负责递归转换为普通 JSON 容器。
+
+`Action.__post_init__` 校验分类型必填字段：`read_file` 要求非空 `path`；`create_file` 要求非空 `path` 且 `content is not None`；`edit_file` 要求非空 `path`、`expected_sha256`、非空 `old_text` 且 `new_text is not None`；`finish` 要求非空 `reason`；`list_files` 无额外必填字段。路径是否越界仍由 Workspace/Policy 判断；JSON 未知字段和 `finish` 只允许 reason 仍由 Task 9 `ActionParser` 判断，不在模型层重复解析职责。所有声明为 tuple/frozenset 的字段在构造时规范化为对应不可变类型。`SessionState` 可变且只保存运行期计数、动作签名、反馈指纹和触碰路径。
 
 后续 task 依赖的字段固定为：
 
@@ -403,7 +551,7 @@ class ModelValidationError(InputError):
 
 - [ ] **Step 4: 定义 Protocol 并验证运行期替身**
 
-`ports.py` 使用 `@runtime_checkable` 和 §1 的精确签名；新增：
+`ports.py` 只定义 EventSink、ApprovalProvider、CredentialStore、LLMClient、LLMClientFactory 五个 `@runtime_checkable` Protocol，并使用 §1 的精确签名；不得提前定义 `ApplicationService` Protocol。新增：
 
 ```python
 class LLMClientFactory(Protocol):
@@ -1231,7 +1379,7 @@ Expected: FAIL because CLI/demos are absent.
 
 - [ ] **Step 3: 实现 CLIAdapter、ConsoleEventSink 和 ConsoleApprovalProvider**
 
-`credential set` 使用 `getpass.getpass`；status 只显示 configured/service/account；run 必填 workspace/task/base-url/model。ConsoleEventSink 渲染 `[轮次] 动作/策略/测试/停止`；JSONL sink 可选且只写 RunEvent。Ctrl+C 返回 ApplicationService 的回滚结果。
+`credential set` 使用 `getpass.getpass`；status 只显示 configured/service/account；run 必填 workspace/task/base-url/model。ConsoleEventSink 渲染 `[轮次] 动作/策略/测试/停止`；JSONL sink 可选且只写 RunEvent。JSONL sink 在输出边界递归把只读 Mapping 转为 dict、tuple/frozenset 转为 list、Path/Enum 转为字符串值，遇到其他对象拒绝写出；不得为方便序列化而把领域模型改回可变容器。Ctrl+C 返回 ApplicationService 的回滚结果。
 
 - [ ] **Step 4: 实现三个确定性演示**
 
