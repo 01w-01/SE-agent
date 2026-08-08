@@ -8,7 +8,6 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from .errors import HarnessError, InputError
 
-_PROTECTED_NAMES = frozenset({".git", ".fbw-recovery"})
 _IGNORED_DIRECTORY_NAMES = frozenset(
     {
         ".git",
@@ -20,13 +19,24 @@ _IGNORED_DIRECTORY_NAMES = frozenset(
         ".mypy_cache",
         "node_modules",
         ".fbw-recovery",
+        ".credentials",
+        ".secrets",
+        ".aws",
+        ".ssh",
+        ".azure",
+        "build",
+        "dist",
+        ".eggs",
     }
 )
+_PROTECTED_EXACT_NAMES = _IGNORED_DIRECTORY_NAMES | {"credentials.json"}
 _WINDOWS_RESERVED_NAMES = frozenset(
     {"con", "prn", "aux", "nul"}
     | {f"com{number}" for number in range(1, 10)}
     | {f"lpt{number}" for number in range(1, 10)}
 )
+_MAX_RETURNED_FILES = 1_000
+_MAX_INSPECTED_ENTRIES = 10_000
 
 
 class PolicyDeniedError(HarnessError):
@@ -35,6 +45,10 @@ class PolicyDeniedError(HarnessError):
 
 class UnsupportedFileError(HarnessError):
     """A workspace entry cannot be handled as a bounded UTF-8 regular file."""
+
+
+class WorkspaceLimitError(HarnessError):
+    """Workspace discovery reached a stable resource limit."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,28 +64,37 @@ class Workspace:
             raise InputError("workspace file size limit must be a positive integer")
 
         candidate = Path(root)
+        absolute = Path(os.path.abspath(candidate))
+        if absolute == Path(absolute.anchor):
+            raise InputError("workspace root must not be a disk root")
+        if any(_is_protected_name(part) for part in absolute.parts):
+            raise InputError("workspace root must not be inside a protected tree")
         try:
+            _reject_reparse_path(absolute, InputError)
             if not candidate.exists() or not candidate.is_dir():
                 raise InputError("workspace root must be an existing directory")
-            if _is_reparse_point(candidate):
-                raise InputError("workspace root must not be a reparse point")
             resolved = candidate.resolve(strict=True)
         except InputError:
             raise
-        except (OSError, RuntimeError) as error:
-            raise InputError("workspace root cannot be resolved") from error
+        except (OSError, RuntimeError):
+            root_failed = True
+        else:
+            root_failed = False
+        if root_failed:
+            raise InputError("workspace root cannot be resolved")
 
-        anchor = Path(resolved.anchor)
-        if resolved == anchor:
-            raise InputError("workspace root must not be a disk root")
         try:
             home = Path.home().resolve(strict=False)
-        except (OSError, RuntimeError) as error:
-            raise InputError("user home directory cannot be resolved") from error
+        except (OSError, RuntimeError):
+            home_failed = True
+        else:
+            home_failed = False
+        if home_failed:
+            raise InputError("user home directory cannot be resolved")
         if _same_path(resolved, home):
             raise InputError("workspace root must not be the user home directory")
-        if _is_protected_name(resolved.name):
-            raise InputError("workspace root must not be a protected directory")
+        if any(_is_protected_name(part) for part in resolved.parts):
+            raise InputError("workspace root must not be inside a protected tree")
 
         self.root = resolved
         self.file_size_limit_bytes = file_size_limit_bytes
@@ -82,33 +105,49 @@ class Workspace:
             raise PolicyDeniedError("workspace path contains a protected segment")
 
         unresolved = self.root.joinpath(*parts)
+        self._reject_reparse_chain(unresolved)
         try:
             resolved = unresolved.resolve(strict=False)
-        except (OSError, RuntimeError) as error:
-            raise PolicyDeniedError("workspace path cannot be resolved safely") from error
+        except (OSError, RuntimeError):
+            resolve_failed = True
+        else:
+            resolve_failed = False
+        if resolve_failed:
+            raise PolicyDeniedError("workspace path cannot be resolved safely")
         if not _is_within(self.root, resolved):
             raise PolicyDeniedError("workspace path escapes the workspace root")
 
-        self._reject_reparse_chain(parts)
         if must_exist:
             try:
                 exists = resolved.exists()
-            except OSError as error:
-                raise InputError("workspace path cannot be inspected") from error
+            except OSError:
+                exists_failed = True
+            else:
+                exists_failed = False
+            if exists_failed:
+                raise InputError("workspace path cannot be inspected")
             if not exists:
                 raise InputError("workspace path does not exist")
         return resolved
 
     def list_files(self) -> tuple[str, ...]:
         discovered: list[str] = []
+        inspected_entries = 0
         pending = [self.root]
         while pending:
             directory = pending.pop()
+            _reject_reparse_path(directory, PolicyDeniedError)
             try:
                 with os.scandir(directory) as iterator:
-                    entries = sorted(iterator, key=lambda entry: entry.name.casefold())
+                    entries = []
+                    for entry in iterator:
+                        inspected_entries += 1
+                        if inspected_entries >= _MAX_INSPECTED_ENTRIES:
+                            raise WorkspaceLimitError("workspace inspection limit reached")
+                        entries.append(entry)
             except OSError:
                 continue
+            entries.sort(key=lambda entry: entry.name.casefold())
             for entry in entries:
                 path = Path(entry.path)
                 canonical_name = _canonical_windows_name(entry.name)
@@ -129,6 +168,8 @@ class Workspace:
                 except (HarnessError, OSError, ValueError):
                     continue
                 discovered.append(relative)
+                if len(discovered) >= _MAX_RETURNED_FILES:
+                    raise WorkspaceLimitError("workspace file return limit reached")
         return tuple(sorted(discovered))
 
     def read_file(self, relative: str) -> FileSnapshot:
@@ -139,44 +180,51 @@ class Workspace:
         target = self.resolve_safe(relative, must_exist=True)
         try:
             before = target.stat(follow_symlinks=False)
-        except OSError as error:
-            raise InputError("workspace file cannot be inspected") from error
+        except OSError:
+            stat_failed = True
+        else:
+            stat_failed = False
+        if stat_failed:
+            raise InputError("workspace file cannot be inspected")
         _validate_regular_file(before, self.file_size_limit_bytes)
 
         try:
             with target.open("rb") as stream:
                 opened = os.fstat(stream.fileno())
                 _validate_regular_file(opened, self.file_size_limit_bytes)
+                if not _same_file_state(before, opened):
+                    raise UnsupportedFileError("workspace file changed before opening")
                 payload = stream.read(self.file_size_limit_bytes + 1)
                 after = os.fstat(stream.fileno())
         except UnsupportedFileError:
             raise
-        except OSError as error:
-            raise InputError("workspace file cannot be read") from error
+        except OSError:
+            read_failed = True
+        else:
+            read_failed = False
+        if read_failed:
+            raise InputError("workspace file cannot be read")
 
-        if len(payload) > self.file_size_limit_bytes or after.st_size > self.file_size_limit_bytes:
+        if not _same_file_state(opened, after):
+            raise UnsupportedFileError("workspace file changed while being read")
+        if len(payload) > self.file_size_limit_bytes:
             raise UnsupportedFileError("workspace file exceeds the configured size limit")
         if b"\x00" in payload:
             raise UnsupportedFileError("workspace file contains binary data")
         try:
             text = payload.decode("utf-8", errors="strict")
-        except UnicodeDecodeError as error:
-            raise UnsupportedFileError("workspace file is not valid UTF-8 text") from error
+        except UnicodeDecodeError:
+            decode_failed = True
+        else:
+            decode_failed = False
+        if decode_failed:
+            raise UnsupportedFileError("workspace file is not valid UTF-8 text")
 
         path = target.relative_to(self.root).as_posix()
         return FileSnapshot(path=path, text=text, sha256=hashlib.sha256(payload).hexdigest())
 
-    def _reject_reparse_chain(self, parts: tuple[str, ...]) -> None:
-        current = self.root
-        for part in parts:
-            current /= part
-            try:
-                if _is_reparse_point(current):
-                    raise PolicyDeniedError("workspace path contains a reparse point")
-            except FileNotFoundError:
-                break
-            except OSError as error:
-                raise PolicyDeniedError("workspace path cannot be inspected safely") from error
+    def _reject_reparse_chain(self, path: Path) -> None:
+        _reject_reparse_path(path, PolicyDeniedError)
 
 
 def _relative_parts(relative: str) -> tuple[str, ...]:
@@ -214,7 +262,11 @@ def _canonical_windows_name(name: str) -> str:
 
 def _is_protected_name(name: str) -> bool:
     canonical = _canonical_windows_name(name)
-    return canonical in _PROTECTED_NAMES or canonical.startswith(".env")
+    return (
+        canonical in _PROTECTED_EXACT_NAMES
+        or canonical.startswith(".env")
+        or canonical.endswith(".egg-info")
+    )
 
 
 def _same_path(left: Path, right: Path) -> bool:
@@ -239,6 +291,21 @@ def _is_reparse_point(path: Path) -> bool:
     return bool(attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT)
 
 
+def _reject_reparse_path(path: Path, error_type: type[PolicyDeniedError | InputError]) -> None:
+    inspection_failed = False
+    for current in reversed((path, *path.parents)):
+        try:
+            if _is_reparse_point(current):
+                raise error_type("workspace path contains a reparse point")
+        except FileNotFoundError:
+            break
+        except OSError:
+            inspection_failed = True
+            break
+    if inspection_failed:
+        raise error_type("workspace path cannot be inspected safely")
+
+
 def _validate_regular_file(metadata: os.stat_result, size_limit: int) -> None:
     if not stat.S_ISREG(metadata.st_mode):
         raise UnsupportedFileError("workspace entry is not a regular file")
@@ -247,3 +314,10 @@ def _validate_regular_file(metadata: os.stat_result, size_limit: int) -> None:
         raise UnsupportedFileError("workspace file is a reparse point")
     if metadata.st_size > size_limit:
         raise UnsupportedFileError("workspace file exceeds the configured size limit")
+
+
+def _same_file_state(left: os.stat_result, right: os.stat_result) -> bool:
+    return all(
+        getattr(left, field) == getattr(right, field)
+        for field in ("st_dev", "st_ino", "st_size", "st_mtime_ns")
+    )
