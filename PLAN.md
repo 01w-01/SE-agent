@@ -787,7 +787,20 @@ git commit -m "feat: 添加安全凭据存储"
 - Consumes: `HarnessConfig.file_size_limit_bytes`、`InputError`、`Action`。
 - Produces: `Workspace(root: Path)`、`resolve_safe(relative: str, *, must_exist: bool) -> Path`、`list_files() -> tuple[str, ...]`、`read_file(relative: str) -> FileSnapshot`。
 
-- [ ] **Step 1: 写路径攻击和正常读取失败测试**
+**用户裁决（2026-08-09）：** 保留 `Path.resolve + commonpath + 逐级重解析点检查` 的
+路径式围栏，不升级为 Windows 原生文件/目录句柄级沙箱。该围栏面向误操作、普通路径越界和
+静态链接，不承诺抵御同一用户下其他进程的恶意并发替换。实现仍须在路径式范围内先做纯语法
+与逐级 `lstat`/文件属性检查，再 resolve；读取时比较 path-stat、opened-handle `fstat` 和读后
+`fstat` 的文件身份、大小及修改时间，变化即稳定失败。目录枚举每次 `scandir` 前重新检查完整
+链，但其剩余竞态按 SPEC R-09 记录，不以句柄级 API 解决。
+
+文件发现固定最多返回 1,000 个文件、最多检查 10,000 个目录项；任一上限达到时抛稳定的
+`WorkspaceLimitError`，不静默截断。保护/忽略集合除原规则外覆盖 `.credentials`、`.secrets`、
+`.aws`、`.ssh`、`.azure`、`credentials.json`、`build`、`dist`、`.eggs` 和 `*.egg-info`；
+root 的完整既存祖先链也必须检查重解析点，root 不得位于受保护目录树内。解码和路径错误不得
+保留可能含外部文件内容的异常链。
+
+- [x] **Step 1: 写路径攻击和正常读取失败测试**
 
 ```python
 @pytest.mark.parametrize("path", ["../outside.py", "C:/outside.py", ".git/config", ".env"])
@@ -805,25 +818,25 @@ def test_read_file_returns_relative_path_hash_and_text(tmp_path: Path) -> None:
     assert len(snapshot.sha256) == 64
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `uv run --project mini-harness pytest mini-harness/tests/test_workspace.py -v`
 
 Expected: FAIL because `Workspace` is undefined.
 
-- [ ] **Step 3: 实现规范路径和保护规则**
+- [x] **Step 3: 实现规范路径和保护规则**
 
 使用 `Path.resolve(strict=False)` 与 `os.path.commonpath` 双重确认目标位于 root；逐级调用 Windows 文件属性/`Path.is_symlink()` 拒绝 symlink、junction 和其他 reparse point；拒绝绝对路径、`..`、磁盘根、用户主目录、`.git`、`.env*`、凭据/恢复目录。
 
-- [ ] **Step 4: 实现有界发现和 UTF-8 读取**
+- [x] **Step 4: 实现有界发现和 UTF-8 读取**
 
 `list_files` 排序返回相对 POSIX 路径，跳过忽略目录和二进制文件；`read_file` 在读取前后检查大小不超过 262,144 bytes，以 `utf-8` 严格解码，返回文本和 SHA-256；解码失败形成稳定 `UnsupportedFileError`。
 
-- [ ] **Step 5: 在 Windows 可用时测试 junction 拒绝**
+- [x] **Step 5: 在 Windows 可用时测试 junction 拒绝**
 
 测试用临时目录创建 junction；若当前账户不能创建，使用 mock 的 reparse 属性分支断言拒绝，而不是跳过核心规则。
 
-- [ ] **Step 6: 全量验证并提交**
+- [x] **Step 6: 全量验证并提交**
 
 Run: `uv run --project mini-harness pytest mini-harness/tests/test_workspace.py -v`
 
@@ -833,6 +846,12 @@ Run: `uv run --project mini-harness pytest -q`
 git add -- mini-harness/src/fbw_harness/workspace.py mini-harness/tests/test_workspace.py
 git commit -m "feat: 添加工作区安全围栏"
 ```
+
+**实现记录（2026-08-09）：** 实现提交 `d69365d`；用户选择路径式方案 B 后，
+修复提交 `830a2a7`。最终验证为工作区测试 `62 passed`、全量测试 `164 passed`、
+Ruff、format 和 `git diff --check` 均通过；review/fix round 1 clean。原生句柄级
+TOCTOU 防护未实现，残余风险按 SPEC R-09 保留。PR：
+[PR #5](https://github.com/01w-01/SE-agent/pull/5)。
 
 ---
 
