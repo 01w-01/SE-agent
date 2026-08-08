@@ -601,7 +601,7 @@ Ruff 和 `git diff --check` 均通过；review/fix round 2 clean。PR：
 - Consumes: `InputError`、`RunRequest`。
 - Produces: `HarnessConfig`、`load_config(request: RunRequest, *, user_config: Path | None) -> HarnessConfig`。
 
-- [ ] **Step 1: 写优先级、默认值和拒绝测试**
+- [x] **Step 1: 写优先级、默认值和拒绝测试**
 
 ```python
 def write_toml(path: Path, text: str) -> Path:
@@ -634,13 +634,13 @@ def test_config_rejects_secret_fields(tmp_path: Path, name: str) -> None:
         load_config(make_request(config_path=config), user_config=None)
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `uv run --project mini-harness pytest mini-harness/tests/test_config.py -v`
 
 Expected: FAIL because `fbw_harness.config` does not exist.
 
-- [ ] **Step 3: 实现配置模型和确定优先级**
+- [x] **Step 3: 实现配置模型和确定优先级**
 
 ```python
 @dataclass(frozen=True, slots=True)
@@ -660,13 +660,13 @@ class HarnessConfig:
 
 只接受明确定义字段；整数必须为正；`pytest_args` 是参数列表，不经过 shell；拒绝 `;`、`|`、`&`、换行和以 `--rootdir`、`-c` 开头的参数。
 
-- [ ] **Step 4: 运行边界测试并补充错误消息**
+- [x] **Step 4: 运行边界测试并补充错误消息**
 
 Run: `uv run --project mini-harness pytest mini-harness/tests/test_config.py -v`
 
 Expected: PASS；错误消息包含配置来源和字段名，但不包含字段值。
 
-- [ ] **Step 5: 全量验证并提交**
+- [x] **Step 5: 全量验证并提交**
 
 Run: `uv run --project mini-harness pytest -q`
 
@@ -676,6 +676,11 @@ Run: `uv run --project mini-harness ruff check mini-harness/src mini-harness/tes
 git add -- mini-harness/src/fbw_harness/config.py mini-harness/tests/test_config.py
 git commit -m "feat: 添加声明式安全配置"
 ```
+
+**实现记录（2026-08-09）：** 实现提交 `81e6c58`；独立评审后的修复提交
+`a9a3586`。最终验证为配置测试 `28 passed`、全量测试 `93 passed`、Ruff 和
+`git diff --check` 均通过；review/fix round 1 clean。PR：
+[PR #3](https://github.com/01w-01/SE-agent/pull/3)。
 
 ---
 
