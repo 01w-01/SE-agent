@@ -204,6 +204,16 @@
 - 安全与边界：只修改 Task 2 四个白名单文件；没有真实 I/O、CLI、Workspace、Parser、Policy 或 `ApplicationService` 提前实现；凭据内容未写入源码、报告或新提交。
 - 分支已推送；PR：[PR #2](https://github.com/01w-01/SE-agent/pull/2)。
 
+### 2026-08-09 · P-022 · 正式 Task 3 声明式安全配置
+
+- Superpowers 技能：`using-git-worktrees`、`subagent-driven-development`、`test-driven-development`、`receiving-code-review`、`requesting-code-review`、`verification-before-completion`。
+- worktree：`D:\Codes\FBW-worktrees\task-03`；分支 `task/03-config-entry`，基线 `251d0ad`。基线全量测试为 `65 passed`。
+- RED/GREEN：首次 RED 为缺少 `fbw_harness.config`；实现配置优先级、白名单、类型/正整数和 pytest 参数校验后定向 `19 passed`。独立 review 指出非 UTF-8 异常、文件错误字段标识和 pytest `@argfile` 绕过三项 Important；控制器验证 pytest 8.4.2 的 `fromfile_prefix_chars='@'` 后进入 fix round 1。
+- 修复：新增 9 个真实边界测试，先观察 `19 passed, 9 failed`，再统一安全错误并拒绝 `@argfile`；提交 `a9a3586 fix: 收紧配置文件与 pytest 参数边界`。原实现提交为 `81e6c58 feat: 添加声明式安全配置`。
+- 最终验证：配置测试 `28 passed`、全量 `93 passed`、Ruff 和累计 `git diff --check` 通过；scoped re-review 判定三项全部 ADDRESSED，0 新 Critical / Important / Minor。
+- 安全与边界：只修改 Task 3 两个白名单文件；错误不含配置值、路径或底层解析文本；没有 shell、CLI 终端依赖或秘密字段进入配置。
+- 分支已推送；PR：[PR #3](https://github.com/01w-01/SE-agent/pull/3)。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |
