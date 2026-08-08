@@ -146,6 +146,13 @@
 - 人工干预：Gate 4 因新 PLAN 缺陷重新打开，需用户批准后继续；未自行修改 Claude 产出的测试来绕过门禁。
 - 教训：Windows 优先不仅是运行平台声明，任何 subprocess 文本边界都必须明确编码；独立核验必须重跑完整命令，不能因 Claude 已生成文件就推断绿色。
 
+### 2026-08-09T01:30:00+08:00 · P-016 · 用户批准 Windows 路径解码修订
+
+- Superpowers 技能：`using-superpowers`、`executing-plans`、`test-driven-development`；恢复冷启动 Gate 2 前的批准门禁。
+- 关键 prompt/context：用户明确回复“批准”；修订只改变 Task 1 测试读取 Git 路径的编码与分隔方式，不改变产品 SPEC 或 Task 接口。
+- 输出：PLAN Gate 4 再次标记完成；准备把 `5ac9b97` 及本次批准证据同步到保留未提交 Task 1 产物的冷启动 worktree。
+- 安全边界：继续保留不提交、不合并、限定 Task 1/2 文件和命令的约束；Task 1 全绿前不进入 Task 2。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |
