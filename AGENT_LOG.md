@@ -192,6 +192,7 @@
 - 验证：定向 smoke 与全量 pytest 均为 `6 passed`；Ruff、正常当前树扫描和 `git diff --check` 通过。
 - 提交：实现 `c5ed568 chore: 建立安全项目骨架`；review-fix `1c8c001 test: 覆盖秘密扫描命中分支`。
 - 评审：1 个 Important（真实临时 Git 仓库命中分支缺覆盖）已在 fix round 1 修复；命名 Minor 延后处理。未记录凭据内容。
+- 分支已推送；PR：[PR #1](https://github.com/01w-01/SE-agent/pull/1)。
 
 ## 3. 当前关键决定
 

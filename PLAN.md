@@ -300,7 +300,7 @@ git commit -m "chore: 建立安全项目骨架"
 
 **实现记录（2026-08-09）：** 实现提交 `c5ed568`；独立评审后的修复提交
 `1c8c001`。验证为 `6 passed`、Ruff、当前树扫描和 `git diff --check` 均通过；独立
-review/fix round 1 clean。PR：pending（尚未创建 URL）。
+review/fix round 1 clean。PR：[PR #1](https://github.com/01w-01/SE-agent/pull/1)。
 
 ---
 
