@@ -127,6 +127,14 @@
 - 人工干预：用户回复“继续”，授权延续既定冷启动流程；修订版 PLAN 仍需用户重新批准，批准前不进入写入试做。
 - 教训：冷启动样本不能只按功能代表性选择，还必须从 worktree 的真实基线沿依赖图可执行；预算上限也是 Agent 运行门禁的一部分，应与任务上下文规模匹配。
 
+### 2026-08-09T01:05:00+08:00 · P-014 · 用户重新批准冷启动 PLAN
+
+- Superpowers 技能：`using-superpowers`、`executing-plans`、`using-git-worktrees`、`test-driven-development`；开始执行前门禁，尚未宣称 Task 完成。
+- 关键 prompt/context：用户明确回复“批准”；陌生 Claude 只依据已批准 SPEC/PLAN，在可舍弃 worktree 按 Task 1 → Task 2 执行 TDD。
+- 输出：PLAN Gate 4 标记完成；冷启动分支将快进到本次批准证据后再启动写入型试做。
+- 安全边界：只允许 Task 1/2 文件、精确的旧原型删除、uv/pytest/ruff/扫描命令和只读 Git 检查；禁止 commit、merge、联网工具及工作区越界。
+- 人工干预：该批准不授权合并冷启动代码，也不解除正式实现阶段的独立 task/PR 流程。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |
