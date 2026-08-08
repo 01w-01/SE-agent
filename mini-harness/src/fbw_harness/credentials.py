@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Protocol
 
 import keyring
-from keyring.errors import PasswordDeleteError
 
 from .errors import HarnessError, InputError
 
@@ -41,27 +40,38 @@ class KeyringCredentialStore:
         self._backend = backend if backend is not None else keyring
 
     def get(self) -> str | None:
+        backend_failed = False
         try:
             return self._backend.get_password(self._service, self._account)
         except Exception:  # noqa: BLE001 - backend exceptions must not leak credential details
-            raise CredentialError("Unable to read credential.") from None
+            backend_failed = True
+        if backend_failed:
+            raise CredentialError("Unable to read credential.")
 
     def set(self, value: str) -> None:
         if not value.strip():
             raise InputError("Credential value must not be blank.")
+        backend_failed = False
         try:
             self._backend.set_password(self._service, self._account, value)
         except Exception:  # noqa: BLE001 - backend exceptions must not leak credential details
-            raise CredentialError("Unable to store credential.") from None
+            backend_failed = True
+        if not backend_failed:
+            return
+        raise CredentialError("Unable to store credential.")
 
     def clear(self) -> bool:
+        backend_failed = False
         try:
             self._backend.delete_password(self._service, self._account)
-        except PasswordDeleteError:
-            return False
         except Exception:  # noqa: BLE001 - backend exceptions must not leak credential details
-            raise CredentialError("Unable to clear credential.") from None
-        return True
+            backend_failed = True
+        if not backend_failed:
+            return True
+
+        if self.get() is None:
+            return False
+        raise CredentialError("Unable to clear credential.")
 
     def status(self) -> CredentialStatus:
         return CredentialStatus(
