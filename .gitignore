@@ -21,6 +21,7 @@ dist/
 
 # Local agent state
 .agents/
+.worktrees/
 
 # Local notes
 docs/temp.md
