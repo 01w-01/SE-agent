@@ -246,3 +246,14 @@ brainstorming 主要推动了以下问题从模糊想法变成可验证决定：
 - 缺陷归因：PLAN 的测试片段没有显式定义 Git 路径输出编码，违反 Windows 优先目标。修订为 `git ls-files -z` 返回原始字节，再逐项严格 UTF-8 解码；NUL 分隔也避免文件名换行造成歧义；
 - Gate 2 仍未完成，Task 1 尚未绿色，Task 2 未开始。Gate 4 重新打开，等待用户批准此项 PLAN 修订后才允许 Claude 继续。
 - 用户于 2026-08-09 再次明确回复“批准”，接受 `git ls-files -z` 与逐路径 UTF-8 解码修订；Gate 4 再次完成，可以保留当前未提交试做产物继续 Task 1，而不是从头重做已验证过的 RED 阶段。
+
+### 10.7 Task 1/2 完成报告与独立评审
+
+- Claude 在最新版 PLAN 下完成 Task 1 与 Task 2，自报 `COLD_START_COMPLETE`；主 Codex 随后独立重跑专项与全量验证，得到 Task 1 2/2、Task 2 17/17、全量 19/19、ruff 通过、正常仓库扫描退出 0；
+- 按 `requesting-code-review` 派出的独立只读 reviewer 不读取本窗口推理，只对照 SPEC/PLAN、基线与未提交工作树。评审判定无 Critical，但有四项 Important，因此 Gate 2 不能仅凭绿色测试通过；
+- 主 Codex 逐项复现：扫描脚本从非 Git 目录运行时打印 fatal 却返回 0；嵌套 `api_key` 可进入 RunEvent；调用者后续修改原 Mapping 会改变已构造事件；`RawDecision()`、不完整 `RunResult`、无 path 的 READ_FILE 均被接受；
+- 缺陷归因同时包含 PLAN 与实现：PLAN 没有为扫描器错误退出、递归秘密、深度不可变和完整 Action 不变量提供足够测试；Claude 又偏离固定 RawDecision/RunResult 签名，并提前把 ApplicationService 定义成 Protocol；
+- 对 reviewer 建议作了职责收敛：Action 模型只校验分类型必填字段；未知 JSON 字段和 finish 只允许 reason 仍由 Task 9 Parser 负责，避免重复解析职责；
+- PLAN 集中修订 Task 1/2 的安全负例、模型冻结、固定签名、五个 Protocol 边界和 README 链接。Gate 4 再次打开，冷启动 worktree 保留但不提交、不合并，等待用户批准后再修复并复审。
+- 同一 reviewer 复核修订版 PLAN 后确认架构职责无新阻断，但指出 fail-closed 退出码/错误摘要和 Action 全部必填字段仍未被 RED 测试精确锁定；随后补成精确退出码 `2`、固定 stderr、create/edit/finish 参数化负例，并增加非字符串键/不支持对象代表测试；
+- 为避免深度不可变与后续 JSONL 冲突，明确只读 Mapping 留在领域层，Task 12 输出边界负责递归转换为普通 JSON 容器，不能反向削弱模型不可变性。

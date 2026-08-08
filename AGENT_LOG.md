@@ -153,6 +153,17 @@
 - 输出：PLAN Gate 4 再次标记完成；准备把 `5ac9b97` 及本次批准证据同步到保留未提交 Task 1 产物的冷启动 worktree。
 - 安全边界：继续保留不提交、不合并、限定 Task 1/2 文件和命令的约束；Task 1 全绿前不进入 Task 2。
 
+### 2026-08-09T01:45:00+08:00 · P-017 · Task 1/2 独立评审未通过
+
+- Superpowers 技能：`executing-plans`、`test-driven-development`、`verification-before-completion`、`requesting-code-review`、`receiving-code-review`；未进入正式实现。
+- 执行结果：陌生 Claude 完成 Task 1/2；主 Codex 独立验证 19/19、ruff 和正常扫描均通过，但独立 reviewer 报告 4 个 Important 安全/契约问题，冷启动 Gate 2 判定不通过。
+- 复现证据：非 Git 目录扫描退出 0；嵌套秘密和构造后 Mapping 注入可见；RawDecision/RunResult 不完整构造被接受；READ_FILE 缺 path 被接受。
+- 反馈处理：确认 fail-open、递归秘密、深度不可变、动作必填和固定签名问题；仅部分采纳“Action 拒绝所有多余字段”，继续把 JSON 未知字段职责留给 Task 9 Parser。
+- PLAN 修订：增加错误路径与嵌套负例，规定递归冻结和循环拒绝，恢复固定构造签名，限定五个 Protocol，补 README 根链接；Gate 4 重新打开。
+- subagent：`/root/cold_start_review` 只读评审完成，无文件修改；冷启动 Claude 产物仍未提交或合并。
+- 教训：正常路径全绿不能证明安全门禁 fail-closed；计划中的固定签名若没有负例，陌生实现者会用“方便测试”的默认值悄悄改变公共契约。
+- reviewer 二次只读复核确认职责划分合理，并要求测试与文字完全一致；已补精确错误码/固定摘要、完整 Action 必填负例、非字符串键/不支持对象代表负例及 Task 12 JSON 序列化边界。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |
