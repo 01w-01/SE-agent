@@ -935,7 +935,8 @@ git commit -m "feat: 添加文件事务与回滚"
 **实现记录（2026-08-10）：** 实现提交 `c67d2ac`；用户选择路径式方案 B 后，
 修复提交 `b4d7c1a`。最终验证为事务测试 `49 passed`、全量测试 `213 passed`、
 Ruff、定向 format 和 `git diff --check` 均通过；review/fix round 1 clean。
-平台级条件更新未实现，残余竞态按 SPEC R-10 保留。PR 链接在创建后补录。
+平台级条件更新未实现，残余竞态按 SPEC R-10 保留。PR：
+[PR #6](https://github.com/01w-01/SE-agent/pull/6)。
 
 ---
 

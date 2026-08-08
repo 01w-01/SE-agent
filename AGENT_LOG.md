@@ -247,6 +247,7 @@
 - fix round 1：TDD 补恢复材料/结果双重 hash、commit-started 终态、平台目录 fsync、恢复目录链/身份复验和 dangling symlink 目录项检查；提交 `b4d7c1a fix: 补强路径式文件事务`。
 - 最终验证：事务 `49 passed`、全量 `213 passed`、Ruff、定向 format、累计 diff check 通过；controller scoped re-review 为 ALL_ADDRESSED。
 - 安全边界：只操作注入的 Workspace 与显式 recovery_root；不实现或宣称操作系统级跨进程条件更新。
+- 分支已推送；PR：[PR #6](https://github.com/01w-01/SE-agent/pull/6)。
 
 ## 3. 当前关键决定
 
