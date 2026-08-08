@@ -80,3 +80,30 @@ def test_secret_scan_treats_no_matches_as_safe_with_native_errors_enabled() -> N
     assert result.returncode == 0
     assert result.stdout == ""
     assert result.stderr == ""
+
+
+def test_secret_scan_reports_only_matched_paths_in_a_real_git_repository(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[2]
+    script = root / "scripts/scan-current-tree.ps1"
+    file_name = "relative-file.txt"
+    fake_match = "sk-" + ("A" * 20)
+    (tmp_path / file_name).write_text(f"token = {fake_match}\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "add", "--", file_name], cwd=tmp_path, check=True, capture_output=True
+    )
+
+    result = subprocess.run(
+        ["pwsh", "-NoProfile", "-File", str(script)],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert result.returncode == 1
+    assert result.stdout == f"{file_name}\n"
+    assert result.stderr == ""
+    assert "sk-" not in result.stdout
+    assert fake_match not in result.stdout
