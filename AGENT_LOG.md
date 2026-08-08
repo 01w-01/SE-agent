@@ -257,6 +257,7 @@
 - review：发现无 Workspace 时 Windows 路径 fail-open、脏路径大小写、manifest/build 覆盖、capability 泄漏和风险事实丢失；fix round 1 通过 18 个预期 RED 后修复，提交 `309cc15 fix: 收紧治理规则边界`。
 - 最终验证：策略 `51 passed`、全量 `264 passed`、Ruff、format、累计 diff check 通过；scoped re-review ALL_ADDRESSED。
 - 依赖记录：Task 7 不存在真实 ToolDispatcher；DENY 不触达真实工具层的集成证明已写入 SDD ledger，必须由 Task 11 完成。
+- 分支已推送；PR：[PR #7](https://github.com/01w-01/SE-agent/pull/7)。
 
 ## 3. 当前关键决定
 

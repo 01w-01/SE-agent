@@ -1017,7 +1017,8 @@ git commit -m "feat: 添加治理与人工审批"
 **实现记录（2026-08-10）：** 实现提交 `fc9e8d7`；独立评审后的修复提交
 `309cc15`。最终验证为策略测试 `51 passed`、全量测试 `264 passed`、Ruff、
 format 和 `git diff --check` 均通过；review/fix round 1 clean。真实 ToolDispatcher
-零调用证明按依赖关系留到 Task 11。PR 链接在创建后补录。
+零调用证明按依赖关系留到 Task 11。PR：
+[PR #7](https://github.com/01w-01/SE-agent/pull/7)。
 
 ---
 
