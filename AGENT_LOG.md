@@ -181,7 +181,8 @@
 - TDD 过程纠偏：第二次 Claude 在测试工具审批前写入生产修复，不能形成 RED 证据；保留新增测试、撤回该轮生产修改后，独立观察 1 个扫描失败和 11 个模型失败，再重新实现 GREEN。
 - 最终验证：`50 passed`、无 pytest warning、ruff 全绿；正常扫描退出 `0`；Git 真缺失时退出 `2`、stdout 空、stderr 固定。第三次 reviewer 报告 0 Critical、0 Important、0 Minor，Ready to proceed: Yes。
 - subagent/commit：`/root/cold_start_rereview` 仅做两轮只读复审，无文件修改；Claude 与主 Codex的冷启动试做保持未提交、未合并。正式过程文档 commit 在本轮完成。
-- 人工判断：Gate 2 标记完成；下一步按 PLAN 移除可舍弃 cold-start worktree。正式 Task 1 仍受“缺少 NJU Git/GitHub remote URL”门禁阻挡。
+- 清理结果：确认临时分支无独有 commit 后，按 PLAN 删除 `D:\Codes\FBW-worktrees\cold-start-claude` 和 `cold-start/claude-spec-plan`；未提交试做代码不可从 commit 恢复，正式过程证据保留在 `main`。
+- 人工判断：Gate 2 标记完成。正式 Task 1 仍受“缺少 NJU Git/GitHub remote URL”门禁阻挡。
 
 ## 3. 当前关键决定
 

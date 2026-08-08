@@ -271,4 +271,4 @@ brainstorming 主要推动了以下问题从模糊想法变成可验证决定：
 - 独立 reviewer 继续发现 3 个 Important：真正找不到 Git executable 时仍泄露原生错误并退出 `1`；空/default payload 跳过冻结；除 ApprovalRequest 外的 tuple/frozenset 字段未防御规范化。主 Codex 逐项最小复现，并确认它们违反 PLAN 已有文字，而不是新需求；
 - 第二次 Claude 修复因内部 Bash 审批未能运行测试，却已经修改生产代码，因此不能冒充 TDD 完成。主 Codex按 `test-driven-development` 保留新增测试、撤回该轮生产修复，重新观察 Git 缺失测试 1 项失败、模型选择组 11 项失败/1 项既有行为通过，再重新应用最小修复；
 - 最终独立验证为 `50 passed` 且无 warning、ruff `All checks passed!`、正常扫描退出 `0`；PATH 仅含 PowerShell、Git 真缺失时退出 `2`、stdout 空、stderr 精确为 `secret scan failed`；
-- 同一 reviewer 第三次只读复核报告 0 Critical、0 Important、0 Minor，确认变更范围只含 Task 1/2、五个 Protocol 边界和全部不可变字段契约。Gate 2 至此完成；试做产物不提交、不合并，按计划删除可舍弃 worktree。
+- 同一 reviewer 第三次只读复核报告 0 Critical、0 Important、0 Minor，确认变更范围只含 Task 1/2、五个 Protocol 边界和全部不可变字段契约。Gate 2 至此完成；清理前确认临时分支无独有 commit，随后移除可舍弃 worktree 和 `cold-start/claude-spec-plan` 分支，试做产物没有提交或合并。
