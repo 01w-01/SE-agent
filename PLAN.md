@@ -1105,6 +1105,14 @@ git add -- mini-harness/src/fbw_harness/testing.py mini-harness/src/fbw_harness/
 git commit -m "feat: 添加测试反馈闭环基础"
 ```
 
+**实现记录（2026-08-10）：** 首版与五轮安全修复提交为 `45800ad`、
+`842ee04`、`9b47845`、`97a42f9`、`4788d56`、`b4e4d65`；达到 review
+上限后停止叠补丁，以 `f60bb4c` 重构两层流式脱敏，再以 `247135a` 收紧
+quoted fragment 与 ASCII known-secret 契约。最终验证 Task 8 `234 passed, 1 skipped`、
+全量 `498 passed, 1 skipped`，Ruff、format、秘密扫描和累计 diff check 通过；
+独立 review 为 0 Critical / 0 Important / 0 Minor。PR：
+[PR #8](https://github.com/01w-01/SE-agent/pull/8)。
+
 ---
 
 ### Task 9: 实现 LLM 抽象、动作解析和上下文构建
