@@ -259,6 +259,19 @@
 - 依赖记录：Task 7 不存在真实 ToolDispatcher；DENY 不触达真实工具层的集成证明已写入 SDD ledger，必须由 Task 11 完成。
 - 分支已推送；PR：[PR #7](https://github.com/01w-01/SE-agent/pull/7)。
 
+### 2026-08-10 · P-027 · 正式 Task 8 pytest 与结构化反馈闭环
+
+- Superpowers 技能：`using-git-worktrees`、`subagent-driven-development`、`test-driven-development`、`receiving-code-review`、`requesting-code-review`、`systematic-debugging`、`verification-before-completion`。
+- worktree：`D:\Codes\FBW-worktrees\task-08`；分支 `task/08-pytest-feedback`，基线 `920e9d9`，基线测试 `264 passed`。
+- 首版：固定 `sys.executable -m pytest`、cwd/shell 边界、Windows 进程树终止、分类/摘要/指纹与脱敏，提交 `45800ad feat: 添加测试反馈闭环基础`。
+- 五轮 review fix：依次补 node-id/赋值/异常/有界双流/taskkill、早期诊断、先脱敏后截断、Authorization/quoted mapping/required secrets、映射 quote 与深度上限；追加 `842ee04`、`9b47845`、`97a42f9`、`4788d56`、`b4e4d65`。达到 5/5 后 reviewer 仍复现 quoted 内容绕过，按 SDD 上限停止叠补丁并升级架构修订。
+- 架构修订：删除旧混合状态机，拆成 `mapping -> global -> sk-token -> known-secret` 两层流式脱敏；RED `45 failed / 5 passed`，提交 `f60bb4c fix: 重构测试输出流式脱敏`。
+- 架构 fix round 1：补 standalone quoted field fragment，并把 known secrets 明确收窄为非空 ASCII tuple、三入口固定验证；追加 `247135a fix: 收紧测试反馈秘密契约`。
+- 最终 review：116 类 quoted fragment 与 3,504 个 chunk 组合、mapping fuzz、known secret overlap/adjacent、63/64/65/10,000 深度均通过；Critical 0 / Important 0 / Minor 0，结论 APPROVED。
+- 最终验证：Task 8 `234 passed, 1 skipped`、全量 `498 passed, 1 skipped`、Ruff、format、当前树秘密扫描和累计 diff check 全部通过；唯一 skip 为 Windows 不适用的 POSIX killpg 分支。
+- 安全边界：输出在进入有界 tail 前脱敏；mapping 栈最多 64；TestRunner 的 `known_secrets` 是 required keyword-only，Task 11 必须把同一 tuple 同时传给 TestRunner 与 FeedbackEngine，并补集成测试。
+- 分支已推送；PR：[PR #8](https://github.com/01w-01/SE-agent/pull/8)。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |
