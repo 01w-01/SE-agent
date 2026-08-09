@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 from .config import HarnessConfig
+from .feedback import OutputRedactor
 from .models import TestResult
 from .workspace import Workspace
 
@@ -32,8 +33,9 @@ _DIAGNOSTIC_OVERLAP_BYTES = (
 class TestRunner:
     """Run the configured pytest selection without accepting a model-provided command."""
 
-    def __init__(self, config: HarnessConfig) -> None:
+    def __init__(self, config: HarnessConfig, known_secrets: tuple[str, ...] = ()) -> None:
         self._config = config
+        self._known_secrets = tuple(secret for secret in known_secrets if secret)
 
     def run(self, workspace: Path | Workspace) -> TestResult:
         started = time.perf_counter()
@@ -54,8 +56,12 @@ class TestRunner:
         except _START_ERRORS:
             return _start_failure(started)
 
-        stdout_reader = _TailReader(process.stdout, self._config.output_tail_chars)
-        stderr_reader = _TailReader(process.stderr, self._config.output_tail_chars)
+        stdout_reader = _TailReader(
+            process.stdout, self._config.output_tail_chars, self._known_secrets
+        )
+        stderr_reader = _TailReader(
+            process.stderr, self._config.output_tail_chars, self._known_secrets
+        )
         readers = (stdout_reader, stderr_reader)
         try:
             for reader in readers:
@@ -91,13 +97,14 @@ class TestRunner:
 class _TailReader:
     """Continuously drain one pipe while retaining only a bounded byte tail."""
 
-    def __init__(self, stream: BinaryIO | None, limit: int) -> None:
+    def __init__(self, stream: BinaryIO | None, limit: int, known_secrets: tuple[str, ...]) -> None:
         self._stream = stream
         self._limit = max(1, limit)
         self._tail = bytearray()
         self._diagnostics: set[str] = set()
         self._scan_overlap = b""
         self._at_stream_start = True
+        self._redactor = OutputRedactor(known_secrets)
         self._thread = threading.Thread(target=self._drain, daemon=True)
         self._started = False
 
@@ -135,16 +142,11 @@ class _TailReader:
         try:
             while chunk := self._stream.read(chunk_size):
                 self._scan_diagnostics(chunk)
-                if len(chunk) >= self._limit:
-                    self._tail[:] = chunk[-self._limit :]
-                    continue
-                self._tail.extend(chunk)
-                overflow = len(self._tail) - self._limit
-                if overflow > 0:
-                    del self._tail[:overflow]
+                self._append_safe(self._redactor.feed(chunk))
         except (OSError, ValueError, RuntimeError, TypeError):
             pass
         finally:
+            self._append_safe(self._redactor.finish())
             self.close()
 
     def _scan_diagnostics(self, chunk: bytes) -> None:
@@ -152,10 +154,24 @@ class _TailReader:
         for name, needles in _DIAGNOSTIC_NEEDLES:
             if any(needle in window for needle in needles):
                 self._diagnostics.add(name)
-        if (self._at_stream_start and window.startswith(b"failed ")) or b"\nfailed " in window:
+        if self._at_stream_start:
+            if window.startswith(b"failed "):
+                self._diagnostics.add("ASSERTION")
+                self._at_stream_start = False
+            elif not b"failed ".startswith(window):
+                self._at_stream_start = False
+        if b"\nfailed " in window:
             self._diagnostics.add("ASSERTION")
-        self._at_stream_start = False
         self._scan_overlap = window[-_DIAGNOSTIC_OVERLAP_BYTES:]
+
+    def _append_safe(self, chunk: bytes) -> None:
+        if len(chunk) >= self._limit:
+            self._tail[:] = chunk[-self._limit :]
+            return
+        self._tail.extend(chunk)
+        overflow = len(self._tail) - self._limit
+        if overflow > 0:
+            del self._tail[:overflow]
 
 
 def _terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
