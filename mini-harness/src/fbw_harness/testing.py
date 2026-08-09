@@ -18,6 +18,15 @@ _REAP_TIMEOUT_SECONDS = 1
 _TASKKILL_TIMEOUT_SECONDS = 2
 _START_ERRORS = (OSError, ValueError, RuntimeError)
 _PROCESS_ERRORS = (OSError, ValueError, RuntimeError, subprocess.SubprocessError)
+_DIAGNOSTIC_NEEDLES = (
+    ("COLLECTION", (b"error collecting", b"error during collection")),
+    ("SYNTAX", (b"syntaxerror",)),
+    ("IMPORT", (b"importerror", b"modulenotfounderror")),
+    ("ASSERTION", (b"assertionerror",)),
+)
+_DIAGNOSTIC_OVERLAP_BYTES = (
+    max(len(needle) for _, needles in _DIAGNOSTIC_NEEDLES for needle in needles) - 1
+)
 
 
 class TestRunner:
@@ -86,17 +95,30 @@ class _TailReader:
         self._stream = stream
         self._limit = max(1, limit)
         self._tail = bytearray()
+        self._diagnostics: set[str] = set()
+        self._scan_overlap = b""
+        self._at_stream_start = True
         self._thread = threading.Thread(target=self._drain, daemon=True)
+        self._started = False
 
     def start(self) -> None:
         self._thread.start()
+        self._started = True
 
     def finish(self) -> str:
+        if not self._started:
+            self.close()
+            return ""
         self._thread.join(timeout=_REAP_TIMEOUT_SECONDS)
         if self._thread.is_alive():
             self.close()
             self._thread.join(timeout=_REAP_TIMEOUT_SECONDS)
-        return _decode(bytes(self._tail))
+        markers = "".join(
+            f"[FBW_DIAGNOSTIC:{name}]\n"
+            for name, _ in _DIAGNOSTIC_NEEDLES
+            if name in self._diagnostics
+        )
+        return markers + _decode(bytes(self._tail))
 
     def close(self) -> None:
         if self._stream is None:
@@ -112,6 +134,7 @@ class _TailReader:
         chunk_size = min(8192, self._limit)
         try:
             while chunk := self._stream.read(chunk_size):
+                self._scan_diagnostics(chunk)
                 if len(chunk) >= self._limit:
                     self._tail[:] = chunk[-self._limit :]
                     continue
@@ -123,6 +146,16 @@ class _TailReader:
             pass
         finally:
             self.close()
+
+    def _scan_diagnostics(self, chunk: bytes) -> None:
+        window = (self._scan_overlap + chunk).lower()
+        for name, needles in _DIAGNOSTIC_NEEDLES:
+            if any(needle in window for needle in needles):
+                self._diagnostics.add(name)
+        if (self._at_stream_start and window.startswith(b"failed ")) or b"\nfailed " in window:
+            self._diagnostics.add("ASSERTION")
+        self._at_stream_start = False
+        self._scan_overlap = window[-_DIAGNOSTIC_OVERLAP_BYTES:]
 
 
 def _terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
