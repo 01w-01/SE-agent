@@ -19,8 +19,11 @@ _INTERNAL_MARKER_PATTERN = re.compile(
 )
 _REDACTED = b"[REDACTED]"
 _MAX_CONTAINER_DEPTH = 64
+_MAX_FIELD_TAIL = 64
 _SENSITIVE_SUFFIXES = (b"key", b"secret", b"password", b"token")
-_VALUE_DELIMITERS = frozenset(b" \t\r\n,;")
+_MAPPING_VALUE_DELIMITERS = frozenset(b" \t\r\n,}]")
+_GLOBAL_VALUE_DELIMITERS = frozenset(b" \t\r\n,;'\"}]")
+_FIELD_BYTES = frozenset(b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-. \t")
 _TOKEN_BYTES = frozenset(b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
 
 _SUMMARY_BY_KIND = {
@@ -38,35 +41,39 @@ class OutputRedactor:
     """Incrementally remove secrets without retaining unbounded raw values."""
 
     def __init__(self, known_secrets: tuple[str, ...] = ()) -> None:
-        self._structured = _StructuredSecretRedactor()
+        self._mapping = _MappingSecretRedactor()
+        self._global = _GlobalSecretRedactor()
         self._sk_tokens = _SkTokenRedactor()
         self._known = _KnownSecretRedactor(known_secrets)
 
     def feed(self, chunk: bytes) -> bytes:
-        structured = self._structured.feed(chunk)
-        tokens = self._sk_tokens.feed(structured)
+        mapped = self._mapping.feed(chunk)
+        globally_safe = self._global.feed(mapped)
+        tokens = self._sk_tokens.feed(globally_safe)
         return self._known.feed(tokens)
 
     def finish(self) -> bytes:
-        structured = self._structured.finish()
-        tokens = self._sk_tokens.feed(structured) + self._sk_tokens.finish()
+        mapped = self._mapping.finish()
+        globally_safe = self._global.feed(mapped) + self._global.finish()
+        tokens = self._sk_tokens.feed(globally_safe) + self._sk_tokens.finish()
         return self._known.feed(tokens) + self._known.finish()
 
 
-class _StructuredSecretRedactor:
+class _MappingSecretRedactor:
+    """Associate quoted mapping keys with values using bounded parser state."""
+
     def __init__(self) -> None:
         self._mode = "normal"
-        self._word_tail = bytearray()
-        self._after_word_space = False
-        self._quote: int | None = None
-        self._escaped = False
         self._containers: list[int] = []
         self._last_significant: int | None = None
-        self._quoted_field: bytes | None = None
-        self._quoted_field_suspicious = False
+        self._quote: int | None = None
+        self._escaped = False
+        self._string_is_key = False
         self._key_buffer = bytearray()
         self._key_valid = False
-        self._quote_is_key = False
+        self._key_suspicious = False
+        self._pending_key: bytes | None = None
+        self._pending_key_suspicious = False
 
     def feed(self, chunk: bytes) -> bytes:
         output = bytearray()
@@ -80,46 +87,17 @@ class _StructuredSecretRedactor:
     def _consume(self, byte: int, output: bytearray) -> None:
         if self._mode == "suppress_rest":
             return
-        if self._mode == "line":
-            if byte in b"\r\n":
-                self._mode = "normal"
-                output.append(byte)
-            return
-        if self._mode == "quoted":
+        if self._mode == "suppress_quoted":
             if self._escaped:
                 self._escaped = False
             elif byte == ord("\\"):
                 self._escaped = True
             elif byte == self._quote:
                 self._mode = "normal"
-            return
-        if self._mode == "passthrough_quote":
-            output.append(byte)
-            if self._escaped:
-                self._escaped = False
-            elif byte == ord("\\"):
-                self._escaped = True
-                if self._quote_is_key:
-                    self._quoted_field_suspicious = True
-            elif byte == self._quote:
-                self._mode = "normal"
-                if self._quote_is_key:
-                    self._quoted_field = (
-                        bytes(self._key_buffer).lower()
-                        if self._key_valid and not self._quoted_field_suspicious
-                        else None
-                    )
                 self._last_significant = byte
-            elif self._quote_is_key:
-                if byte in _TOKEN_BYTES and self._key_valid:
-                    self._key_buffer.append(byte)
-                    if len(self._key_buffer) > 32:
-                        del self._key_buffer[:-32]
-                else:
-                    self._key_valid = False
             return
-        if self._mode == "unquoted":
-            if byte in _VALUE_DELIMITERS:
+        if self._mode == "suppress_unquoted":
+            if byte in _MAPPING_VALUE_DELIMITERS:
                 self._mode = "normal"
                 self._consume_normal(byte, output)
             return
@@ -129,13 +107,30 @@ class _StructuredSecretRedactor:
             if byte in b"'\"":
                 self._quote = byte
                 self._escaped = False
-                self._mode = "quoted"
+                self._mode = "suppress_quoted"
                 return
-            if byte in _VALUE_DELIMITERS:
+            if byte in _MAPPING_VALUE_DELIMITERS:
                 self._mode = "normal"
                 self._consume_normal(byte, output)
                 return
-            self._mode = "unquoted"
+            self._mode = "suppress_unquoted"
+            return
+        if self._mode == "string":
+            output.append(byte)
+            if self._escaped:
+                self._escaped = False
+            elif byte == ord("\\"):
+                self._escaped = True
+                if self._string_is_key:
+                    self._key_suspicious = True
+            elif byte == self._quote:
+                self._mode = "normal"
+                if self._string_is_key:
+                    self._pending_key = bytes(self._key_buffer) if self._key_valid else None
+                    self._pending_key_suspicious = self._key_suspicious
+                self._last_significant = byte
+            elif self._string_is_key:
+                self._consume_key_byte(byte)
             return
         self._consume_normal(byte, output)
 
@@ -146,88 +141,41 @@ class _StructuredSecretRedactor:
             self._mode = "suppress_rest"
             return
 
-        word = bytes(self._word_tail).lower()
-        field = self._quoted_field if self._quoted_field is not None else word
-        if byte in b"=":
-            output.append(byte)
-            if self._quoted_field_suspicious:
-                output.extend(_REDACTED)
-                self._mode = "await_value"
-            elif field == b"authorization":
-                output.extend(_REDACTED)
-                self._mode = "line"
-            elif _is_sensitive_field(field):
-                output.extend(_REDACTED)
-                self._mode = "await_value"
-            self._word_tail.clear()
-            self._quoted_field = None
-            self._quoted_field_suspicious = False
-            self._after_word_space = False
-            self._last_significant = byte
-            return
         if byte == ord(":"):
             output.append(byte)
-            if self._quoted_field_suspicious:
+            sensitive = self._pending_key_suspicious or (
+                self._pending_key is not None and _is_sensitive_mapping_key(self._pending_key)
+            )
+            if sensitive:
                 output.extend(_REDACTED)
                 self._mode = "await_value"
-            elif field == b"authorization":
-                output.extend(_REDACTED)
-                self._mode = "line"
-            elif _is_sensitive_field(field):
-                output.extend(_REDACTED)
-                self._mode = "await_value"
-            self._word_tail.clear()
-            self._quoted_field = None
-            self._quoted_field_suspicious = False
-            self._after_word_space = False
+            self._clear_pending_key()
             self._last_significant = byte
             return
-        if byte in b" \t":
+        if byte in b" \t\r\n":
             output.append(byte)
-            if word == b"bearer":
-                output.extend(_REDACTED)
-                self._mode = "await_value"
-                self._word_tail.clear()
-            else:
-                self._after_word_space = True
-            return
-        if byte in b"\r\n":
-            output.append(byte)
-            self._word_tail.clear()
-            self._after_word_space = False
             return
 
         if byte in b"'\"":
-            output.append(byte)
-            self._mode = "passthrough_quote"
-            self._quote = byte
-            self._escaped = False
-            self._quote_is_key = bool(
+            is_key = bool(
                 self._containers
                 and self._containers[-1] == ord("{")
                 and self._last_significant in (ord("{"), ord(","))
             )
+            if not is_key:
+                self._clear_pending_key()
+            output.append(byte)
+            self._mode = "string"
+            self._quote = byte
+            self._escaped = False
+            self._string_is_key = is_key
             self._key_buffer.clear()
             self._key_valid = True
-            self._quoted_field = None
-            self._quoted_field_suspicious = False
-            self._word_tail.clear()
-            self._after_word_space = False
+            self._key_suspicious = False
             return
 
+        self._clear_pending_key()
         output.append(byte)
-        if self._quoted_field is not None:
-            self._quoted_field = None
-        self._quoted_field_suspicious = False
-        if self._after_word_space:
-            self._word_tail.clear()
-            self._after_word_space = False
-        if byte in _TOKEN_BYTES:
-            self._word_tail.append(byte)
-            if len(self._word_tail) > 32:
-                del self._word_tail[:-32]
-        else:
-            self._word_tail.clear()
         if byte in b"{[":
             self._containers.append(byte)
         elif self._containers and (
@@ -237,12 +185,124 @@ class _StructuredSecretRedactor:
             self._containers.pop()
         self._last_significant = byte
 
+    def _consume_key_byte(self, byte: int) -> None:
+        if not self._key_valid:
+            return
+        if _is_ascii_alnum(byte):
+            canonical = byte | 32
+        elif byte in b" .-_":
+            canonical = ord("_")
+        else:
+            self._key_valid = False
+            return
+        self._key_buffer.append(canonical)
+        if len(self._key_buffer) > _MAX_FIELD_TAIL:
+            del self._key_buffer[:-_MAX_FIELD_TAIL]
+
+    def _clear_pending_key(self) -> None:
+        self._pending_key = None
+        self._pending_key_suspicious = False
+
+
+class _GlobalSecretRedactor:
+    """Scan every mapped byte for secret-bearing assignments."""
+
+    def __init__(self) -> None:
+        self._mode = "normal"
+        self._candidate = bytearray()
+        self._quote: int | None = None
+        self._escaped = False
+
+    def feed(self, chunk: bytes) -> bytes:
+        output = bytearray()
+        for byte in chunk:
+            self._consume(byte, output)
+        return bytes(output)
+
+    def finish(self) -> bytes:
+        output = bytearray()
+        if self._mode == "normal":
+            self._flush_candidate(output)
+        else:
+            self._candidate.clear()
+        return bytes(output)
+
+    def _consume(self, byte: int, output: bytearray) -> None:
+        if self._mode == "line":
+            if byte in b"\r\n":
+                self._mode = "normal"
+                output.append(byte)
+            return
+        if self._mode == "suppress_quoted":
+            if self._escaped:
+                self._escaped = False
+            elif byte == ord("\\"):
+                self._escaped = True
+            elif byte == self._quote:
+                self._mode = "normal"
+                output.append(byte)
+            return
+        if self._mode == "suppress_unquoted":
+            if byte in _GLOBAL_VALUE_DELIMITERS:
+                self._mode = "normal"
+                self._consume_normal(byte, output)
+            return
+        if self._mode == "await_value":
+            if byte in b" \t":
+                output.append(byte)
+                return
+            if byte in b"'\"":
+                self._quote = byte
+                self._escaped = False
+                self._mode = "suppress_quoted"
+                return
+            if byte in _GLOBAL_VALUE_DELIMITERS:
+                self._mode = "normal"
+                self._consume_normal(byte, output)
+                return
+            self._mode = "suppress_unquoted"
+            return
+        self._consume_normal(byte, output)
+
+    def _consume_normal(self, byte: int, output: bytearray) -> None:
+        if byte in b"\r\n":
+            self._flush_candidate(output)
+            output.append(byte)
+            return
+        if byte in b"=:":
+            canonical = _canonical_field(bytes(self._candidate))
+            authorization = canonical == b"authorization" or canonical.endswith(b"_authorization")
+            sensitive = authorization or _is_sensitive_field(canonical)
+            self._flush_candidate(output)
+            output.append(byte)
+            if sensitive:
+                output.extend(_REDACTED)
+                self._mode = "line" if authorization else "await_value"
+            return
+        if byte in _FIELD_BYTES:
+            if byte in b" \t" and _is_bearer_field(_canonical_field(bytes(self._candidate))):
+                self._flush_candidate(output)
+                output.append(byte)
+                output.extend(_REDACTED)
+                self._mode = "await_value"
+                return
+            self._candidate.append(byte)
+            if len(self._candidate) > _MAX_FIELD_TAIL:
+                output.append(self._candidate.pop(0))
+            return
+        self._flush_candidate(output)
+        output.append(byte)
+
+    def _flush_candidate(self, output: bytearray) -> None:
+        output.extend(self._candidate)
+        self._candidate.clear()
+
 
 class _SkTokenRedactor:
     def __init__(self) -> None:
         self._candidate = bytearray()
         self._suppressing = False
-        self._previous_is_alnum = False
+        self._previous_blocks_start = False
 
     def feed(self, chunk: bytes) -> bytes:
         output = bytearray()
@@ -254,7 +314,7 @@ class _SkTokenRedactor:
         remaining = bytes(self._candidate)
         self._candidate.clear()
         if remaining:
-            self._previous_is_alnum = _is_ascii_alnum(remaining[-1])
+            self._previous_blocks_start = _blocks_sk_start(remaining[-1])
         return remaining
 
     def _consume(self, byte: int, output: bytearray) -> None:
@@ -267,7 +327,7 @@ class _SkTokenRedactor:
 
         expected = (ord("s"), ord("k"), ord("-"))
         if len(self._candidate) < 3:
-            if not self._candidate and (byte | 32 != ord("s") or self._previous_is_alnum):
+            if not self._candidate and (byte | 32 != ord("s") or self._previous_blocks_start):
                 self._emit_safe(bytes((byte,)), output)
                 return
             wanted = expected[len(self._candidate)]
@@ -294,7 +354,7 @@ class _SkTokenRedactor:
     def _emit_safe(self, value: bytes, output: bytearray) -> None:
         output.extend(value)
         if value:
-            self._previous_is_alnum = _is_ascii_alnum(value[-1])
+            self._previous_blocks_start = _blocks_sk_start(value[-1])
 
 
 class _KnownSecretRedactor:
@@ -345,14 +405,40 @@ class _KnownSecretRedactor:
 
 
 def _is_sensitive_field(word: bytes) -> bool:
-    canonical = word.replace(b"-", b"_")
+    canonical = _canonical_field(word)
     return any(
         canonical == suffix or canonical.endswith(b"_" + suffix) for suffix in _SENSITIVE_SUFFIXES
     )
 
 
+def _is_sensitive_mapping_key(field: bytes) -> bool:
+    canonical = _canonical_field(field)
+    return canonical == b"authorization" or _is_sensitive_field(canonical)
+
+
+def _is_bearer_field(field: bytes) -> bool:
+    return field == b"bearer" or field.endswith(b"_bearer")
+
+
+def _canonical_field(field: bytes) -> bytes:
+    canonical = bytearray()
+    previous_separator = False
+    for byte in field.lower():
+        if _is_ascii_alnum(byte):
+            canonical.append(byte)
+            previous_separator = False
+        elif byte in b" .-_\t" and canonical and not previous_separator:
+            canonical.append(ord("_"))
+            previous_separator = True
+    return bytes(canonical).strip(b"_")
+
+
 def _is_ascii_alnum(byte: int) -> bool:
     return ord("0") <= byte <= ord("9") or ord("a") <= (byte | 32) <= ord("z")
+
+
+def _blocks_sk_start(byte: int) -> bool:
+    return _is_ascii_alnum(byte) or byte == ord("-")
 
 
 class FeedbackEngine:

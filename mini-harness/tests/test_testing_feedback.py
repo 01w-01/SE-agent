@@ -243,7 +243,132 @@ def test_output_redactor_fail_closes_at_bounded_container_depth(chunk_size: int)
     assert hidden.encode() not in safe
     assert safe.count(b"[REDACTED]") == 1
     assert len(safe) <= 128
-    assert len(redactor._structured._containers) <= 64
+    assert len(redactor._mapping._containers) <= 64
+
+
+@pytest.mark.parametrize(
+    "payload, hidden",
+    [
+        (b'{"note":"api_key=EMBEDDEDSECRET"}', "EMBEDDEDSECRET"),
+        (b'message="Authorization: Basic AUTHSECRET"', "AUTHSECRET"),
+        (b'prose "token=QUOTESECRET" unchanged', "QUOTESECRET"),
+        (b'{"API KEY":"SPACESECRET"}', "SPACESECRET"),
+        (b'{"openai.api_key":"DOTSECRET"}', "DOTSECRET"),
+    ],
+)
+@pytest.mark.parametrize("chunk_size", [1, 2, 3, 7, 10_000])
+def test_output_redactor_scans_global_assignments_and_canonical_mapping_keys(
+    payload: bytes, hidden: str, chunk_size: int
+) -> None:
+    safe = _stream_redact(payload, chunk_size=chunk_size)
+
+    assert safe == _stream_redact(payload, chunk_size=len(payload))
+    assert hidden not in safe
+    assert "[REDACTED]" in safe
+
+
+@pytest.mark.parametrize(
+    "payload, hidden",
+    [
+        (b'prefix "token=' + b"RUNNERQUOTEDSECRET" * 8, "RUNNERQUOTEDSECRET"),
+        (b'{"API KEY":"' + b"RUNNERSPACESECRET" * 8, "RUNNERSPACESECRET"),
+        (b'{"openai.api_key":"' + b"RUNNERDOTSECRET" * 8, "RUNNERDOTSECRET"),
+    ],
+)
+def test_runner_and_feedback_redact_adversarial_stream_before_mid_secret_tail(
+    payload: bytes,
+    hidden: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    process = _CompletedProcess(stdout=payload, returncode=1)
+    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: process)
+
+    result = HarnessTestRunner(HarnessConfig(output_tail_chars=11), known_secrets=()).run(tmp_path)
+    feedback = FeedbackEngine(11).from_test(result)
+
+    assert hidden not in result.stdout
+    assert hidden not in feedback.output_tail
+    assert result.stdout.endswith("[REDACTED]")
+    assert feedback.output_tail.endswith("[REDACTED]"[-11:])
+
+
+@pytest.mark.parametrize("chunk_size", [1, 2, 3, 7, 10_000])
+def test_output_redactor_preserves_safe_quoted_diagnostics_and_task_sk_text(
+    chunk_size: int,
+) -> None:
+    payload = (
+        b'prose "status token count" https://example.test/a:b at 12:34 '
+        b"AssertionError: expected task-sk-abcdefghijk"
+    )
+
+    assert _stream_redact(payload, chunk_size=chunk_size) == payload.decode("ascii")
+
+
+@pytest.mark.parametrize("quoted", [False, True])
+@pytest.mark.parametrize("chunk_size", [1, 7, 8192])
+def test_output_redactor_suppresses_very_long_secret_with_bounded_state(
+    quoted: bool, chunk_size: int
+) -> None:
+    value = b"Q" * 100_000
+    payload = b"token=" + (b'"' if quoted else b"") + value
+    redactor = OutputRedactor()
+    emitted = bytearray()
+    for offset in range(0, len(payload), chunk_size):
+        emitted.extend(redactor.feed(payload[offset : offset + chunk_size]))
+    emitted.extend(redactor.finish())
+
+    assert b"Q" * 32 not in emitted
+    assert emitted.count(b"[REDACTED]") == 1
+    assert len(emitted) <= 32
+    assert hasattr(redactor, "_mapping")
+    assert hasattr(redactor, "_global")
+    for layer in (redactor._mapping, redactor._global):
+        for state in vars(layer).values():
+            if isinstance(state, (bytes, bytearray, str, list, tuple)):
+                assert len(state) <= 64
+
+
+@pytest.mark.parametrize("chunk_size", [1, 2, 3, 7, 10_000])
+def test_output_redactor_handles_adjacent_secrets_escaped_quotes_and_eof(
+    chunk_size: int,
+) -> None:
+    payload = (
+        b'prose token="FIRSTSECRET\\"CONTINUEDSECRET" '
+        b"password=SECONDSECRET authorization=THIRDSECRET"
+    )
+    safe = _stream_redact(payload, chunk_size=chunk_size)
+
+    assert safe == _stream_redact(payload, chunk_size=len(payload))
+    assert "FIRSTSECRET" not in safe
+    assert "CONTINUEDSECRET" not in safe
+    assert "SECONDSECRET" not in safe
+    assert "THIRDSECRET" not in safe
+    assert safe.count("[REDACTED]") == 3
+
+
+@pytest.mark.parametrize("depth", [64, 65])
+@pytest.mark.parametrize("chunk_size", [1, 7, 10_000])
+def test_output_redactor_has_exact_64_container_depth_boundary(depth: int, chunk_size: int) -> None:
+    hidden = b"DEPTHSECRET"
+    payload = b"{" * depth + b'"api_key":"' + hidden + b'"' + b"}" * depth
+    redactor = OutputRedactor()
+    safe = (
+        b"".join(
+            redactor.feed(payload[offset : offset + chunk_size])
+            for offset in range(0, len(payload), chunk_size)
+        )
+        + redactor.finish()
+    )
+
+    assert hidden not in safe
+    assert safe.count(b"[REDACTED]") == 1
+    assert hasattr(redactor, "_mapping")
+    assert len(redactor._mapping._containers) <= 64
+    if depth == 65:
+        assert len(safe) <= 128
+    else:
+        assert safe.startswith(b"{" * 64)
 
 
 def test_runner_reports_real_assertion_failure(tmp_path: Path) -> None:
