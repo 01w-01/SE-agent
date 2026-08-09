@@ -4,14 +4,20 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
+from typing import BinaryIO
 
 from .config import HarnessConfig
 from .models import TestResult
 from .workspace import Workspace
 
 _TIMEOUT_EXIT_CODE = 124
+_REAP_TIMEOUT_SECONDS = 1
+_TASKKILL_TIMEOUT_SECONDS = 2
+_START_ERRORS = (OSError, ValueError, RuntimeError)
+_PROCESS_ERRORS = (OSError, ValueError, RuntimeError, subprocess.SubprocessError)
 
 
 class TestRunner:
@@ -21,54 +27,102 @@ class TestRunner:
         self._config = config
 
     def run(self, workspace: Path | Workspace) -> TestResult:
-        root = workspace.root if isinstance(workspace, Workspace) else Path(workspace).resolve()
-        command = [sys.executable, "-m", "pytest", *self._config.pytest_args]
-        process_options: dict[str, object] = {
-            "cwd": root,
-            "shell": False,
-            "stdout": subprocess.PIPE,
-            "stderr": subprocess.PIPE,
-        }
-        if os.name == "nt":
-            process_options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
-        else:
-            process_options["start_new_session"] = True
-
         started = time.perf_counter()
         try:
+            root = workspace.root if isinstance(workspace, Workspace) else Path(workspace).resolve()
+            command = [sys.executable, "-m", "pytest", *self._config.pytest_args]
+            process_options: dict[str, object] = {
+                "cwd": root,
+                "shell": False,
+                "stdout": subprocess.PIPE,
+                "stderr": subprocess.PIPE,
+            }
+            if os.name == "nt":
+                process_options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+            else:
+                process_options["start_new_session"] = True
             process = subprocess.Popen(command, **process_options)
-        except OSError:
-            return TestResult(False, 1, "", "Unable to start pytest.", _elapsed(started))
+        except _START_ERRORS:
+            return _start_failure(started)
 
+        stdout_reader = _TailReader(process.stdout, self._config.output_tail_chars)
+        stderr_reader = _TailReader(process.stderr, self._config.output_tail_chars)
+        readers = (stdout_reader, stderr_reader)
         try:
-            stdout, stderr = process.communicate(timeout=self._config.pytest_timeout_seconds)
-        except subprocess.TimeoutExpired as timeout:
-            stdout = timeout.output or b""
-            stderr = timeout.stderr or b""
-            try:
-                _terminate_process_tree(process)
-                final_stdout, final_stderr = process.communicate(timeout=1)
-                stdout = final_stdout or stdout
-                stderr = final_stderr or stderr
-            except (OSError, subprocess.SubprocessError):
-                pass
+            for reader in readers:
+                reader.start()
+            process.wait(timeout=self._config.pytest_timeout_seconds)
+        except subprocess.TimeoutExpired:
+            _stop_process(process)
+            stdout, stderr = _finish_readers(readers)
             return TestResult(
                 False,
                 _TIMEOUT_EXIT_CODE,
-                _decode(stdout),
-                _decode(stderr),
+                stdout,
+                stderr,
                 _elapsed(started),
                 True,
             )
+        except _PROCESS_ERRORS:
+            _stop_process(process)
+            _finish_readers(readers)
+            return _start_failure(started)
 
-        exit_code = process.returncode
+        stdout, stderr = _finish_readers(readers)
+        exit_code = process.returncode if isinstance(process.returncode, int) else 1
         return TestResult(
             exit_code == 0,
             exit_code,
-            _decode(stdout),
-            _decode(stderr),
+            stdout,
+            stderr,
             _elapsed(started),
         )
+
+
+class _TailReader:
+    """Continuously drain one pipe while retaining only a bounded byte tail."""
+
+    def __init__(self, stream: BinaryIO | None, limit: int) -> None:
+        self._stream = stream
+        self._limit = max(1, limit)
+        self._tail = bytearray()
+        self._thread = threading.Thread(target=self._drain, daemon=True)
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def finish(self) -> str:
+        self._thread.join(timeout=_REAP_TIMEOUT_SECONDS)
+        if self._thread.is_alive():
+            self.close()
+            self._thread.join(timeout=_REAP_TIMEOUT_SECONDS)
+        return _decode(bytes(self._tail))
+
+    def close(self) -> None:
+        if self._stream is None:
+            return
+        try:
+            self._stream.close()
+        except (OSError, ValueError):
+            pass
+
+    def _drain(self) -> None:
+        if self._stream is None:
+            return
+        chunk_size = min(8192, self._limit)
+        try:
+            while chunk := self._stream.read(chunk_size):
+                if len(chunk) >= self._limit:
+                    self._tail[:] = chunk[-self._limit :]
+                    continue
+                self._tail.extend(chunk)
+                overflow = len(self._tail) - self._limit
+                if overflow > 0:
+                    del self._tail[:overflow]
+        except (OSError, ValueError, RuntimeError, TypeError):
+            pass
+        finally:
+            self.close()
 
 
 def _terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
@@ -78,11 +132,46 @@ def _terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
             check=False,
             capture_output=True,
             shell=False,
+            timeout=_TASKKILL_TIMEOUT_SECONDS,
         )
         if completed.returncode != 0:
             raise OSError("process tree termination failed")
         return
     os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+
+
+def _stop_process(process: subprocess.Popen[bytes]) -> None:
+    tree_terminated = False
+    try:
+        _terminate_process_tree(process)
+        tree_terminated = True
+    except _PROCESS_ERRORS:
+        _best_effort_kill(process)
+
+    if _bounded_wait(process):
+        return
+    if tree_terminated:
+        _best_effort_kill(process)
+        _bounded_wait(process)
+
+
+def _best_effort_kill(process: subprocess.Popen[bytes]) -> None:
+    try:
+        process.kill()
+    except _PROCESS_ERRORS:
+        pass
+
+
+def _bounded_wait(process: subprocess.Popen[bytes]) -> bool:
+    try:
+        process.wait(timeout=_REAP_TIMEOUT_SECONDS)
+    except _PROCESS_ERRORS:
+        return False
+    return True
+
+
+def _finish_readers(readers: tuple[_TailReader, _TailReader]) -> tuple[str, str]:
+    return readers[0].finish(), readers[1].finish()
 
 
 def _decode(value: bytes | str) -> str:
@@ -93,3 +182,7 @@ def _decode(value: bytes | str) -> str:
 
 def _elapsed(started: float) -> float:
     return max(0.0, time.perf_counter() - started)
+
+
+def _start_failure(started: float) -> TestResult:
+    return TestResult(False, 1, "", "Unable to start pytest.", _elapsed(started))

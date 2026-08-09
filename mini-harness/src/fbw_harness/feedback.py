@@ -5,7 +5,7 @@ import json
 import re
 from dataclasses import replace
 
-from .models import Feedback, FeedbackKind, Observation, PolicyDecision, TestResult
+from .models import Feedback, FeedbackKind, Observation, PolicyDecision, PolicyLevel, TestResult
 
 _NODE_ID = r"(?:[A-Za-z0-9_.-]+[\\/])*[A-Za-z0-9_.-]+\.py(?:::[A-Za-z0-9_\[\].-]+)+"
 _NODE_ID_PATTERN = re.compile(rf"(?m)^FAILED\s+({_NODE_ID})(?:\s|$)")
@@ -16,10 +16,11 @@ _WINDOWS_PATH_PATTERN = re.compile(
 _POSIX_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9_.-])/(?:[^/\s:]+/)+[^/\s:]*")
 _AUTHORIZATION_PATTERN = re.compile(r"(?i)\bauthorization\b\s*[:=]\s*(?:basic|bearer)?\s*[^\s,;]+")
 _ASSIGNMENT_PATTERN = re.compile(
-    r"(?i)\b(?:api[_ -]?key|key|secret|password|token)\b\s*[:=]\s*"
+    r"(?i)\b(?:api[ _-]?key|(?:[a-z0-9]+_)*(?:key|secret|password|token))\b"
+    r"\s*[:=]\s*"
     r"(?:['\"][^'\"\r\n]*['\"]|[^\s,;]+)"
 )
-_SK_PATTERN = re.compile(r"(?i)\bsk-[A-Za-z0-9_-]{8,}\b")
+_SK_PATTERN = re.compile(r"(?i)(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{8,}\b")
 
 _SUMMARY_BY_KIND = {
     FeedbackKind.PASSED: "Pytest passed.",
@@ -42,10 +43,10 @@ class FeedbackEngine:
     def from_test(self, result: TestResult) -> Feedback:
         combined = _combine_output(result.stdout, result.stderr)
         kind = _classify(result, combined)
-        declared_tests = {
-            node_id for node_id in result.failed_tests if _NODE_ID_FULL_PATTERN.fullmatch(node_id)
-        }
-        failed_tests = tuple(sorted(declared_tests.union(_NODE_ID_PATTERN.findall(combined))))
+        node_id_candidates = set(result.failed_tests).union(_NODE_ID_PATTERN.findall(combined))
+        failed_tests = tuple(
+            sorted(node_id for node_id in node_id_candidates if self._is_safe_node_id(node_id))
+        )
         safe_output = self._redact(combined)
         feedback = Feedback(
             kind=kind,
@@ -58,6 +59,8 @@ class FeedbackEngine:
         return replace(feedback, fingerprint=fingerprint(feedback))
 
     def from_policy(self, decision: PolicyDecision) -> Feedback:
+        if decision.level is not PolicyLevel.DENY:
+            raise ValueError("policy feedback requires a denied decision")
         feedback = Feedback(
             kind=FeedbackKind.POLICY_DENIED,
             passed=None,
@@ -67,12 +70,13 @@ class FeedbackEngine:
         return replace(feedback, fingerprint=fingerprint(feedback))
 
     def from_tool(self, observation: Observation) -> Feedback:
-        outcome = "succeeded" if observation.success else "failed"
+        if observation.success:
+            raise ValueError("tool feedback requires a failed observation")
         feedback = Feedback(
             kind=FeedbackKind.TOOL_ERROR,
             passed=None,
             exit_code=observation.exit_code,
-            summary=f"Tool execution {outcome}.",
+            summary="Tool execution failed.",
         )
         return replace(feedback, fingerprint=fingerprint(feedback))
 
@@ -85,6 +89,17 @@ class FeedbackEngine:
         safe = _SK_PATTERN.sub("[REDACTED]", safe)
         safe = _WINDOWS_PATH_PATTERN.sub("[PATH]", safe)
         return _POSIX_PATH_PATTERN.sub("[PATH]", safe)
+
+    def _is_safe_node_id(self, node_id: str) -> bool:
+        if not _NODE_ID_FULL_PATTERN.fullmatch(node_id):
+            return False
+        path = node_id.split("::", 1)[0]
+        if path.startswith(("/", "\\")) or re.match(r"(?i)^[a-z]:", path):
+            return False
+        segments = re.split(r"[\\/]", path)
+        if any(segment in {"", ".", ".."} for segment in segments):
+            return False
+        return self._redact(node_id) == node_id
 
 
 def fingerprint(feedback: Feedback) -> str:
