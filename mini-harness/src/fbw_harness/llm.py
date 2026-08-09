@@ -4,6 +4,11 @@ from openai import APIConnectionError, APITimeoutError, OpenAI
 
 from .models import RawDecision, RawToolCall
 
+MAX_TOOL_CALLS = 16
+MAX_TOOL_NAME_CHARS = 64
+MAX_TOOL_ARGUMENT_CHARS = 4_194_304
+MAX_ASSISTANT_CONTENT_CHARS = 16_000
+
 _DECISION_ERROR = "LLM decision failed"
 
 
@@ -89,7 +94,7 @@ def _to_raw_decision(response: object) -> RawDecision:
         raise _MalformedResponse
     message = choices[0].message
     tool_calls = message.tool_calls
-    if not isinstance(tool_calls, (list, tuple)):
+    if not isinstance(tool_calls, (list, tuple)) or len(tool_calls) > MAX_TOOL_CALLS:
         raise _MalformedResponse
 
     parsed: list[RawToolCall] = []
@@ -99,8 +104,11 @@ def _to_raw_decision(response: object) -> RawDecision:
         arguments = function.arguments
         if not isinstance(name, str) or not isinstance(arguments, str):
             raise _MalformedResponse
+        if len(name) > MAX_TOOL_NAME_CHARS or len(arguments) > MAX_TOOL_ARGUMENT_CHARS:
+            raise _MalformedResponse
         parsed.append(RawToolCall(name=name, arguments=arguments))
-    content = message.content if isinstance(message.content, str) else ""
+    raw_content = message.content
+    content = raw_content[:MAX_ASSISTANT_CONTENT_CHARS] if isinstance(raw_content, str) else ""
     return RawDecision(tool_calls=tuple(parsed), content=content)
 
 
