@@ -58,14 +58,17 @@ def _parse_action(decision: object) -> Action:
     if not isinstance(decision, RawDecision):
         raise TypeError("decision type")
     tool_calls = decision.tool_calls
-    if len(tool_calls) > MAX_TOOL_CALLS or len(tool_calls) != 1:
+    if type(tool_calls) is not tuple:
+        raise TypeError("tool calls type")
+    tool_call_count = len(tool_calls)
+    if tool_call_count > MAX_TOOL_CALLS or tool_call_count != 1:
         raise ValueError("tool call count")
     call = tool_calls[0]
     if not isinstance(call, RawToolCall):
         raise TypeError("tool call type")
     name = call.name
     raw_arguments = call.arguments
-    if not isinstance(name, str) or not isinstance(raw_arguments, str):
+    if type(name) is not str or type(raw_arguments) is not str:
         raise TypeError("tool call fields")
     if len(name) > MAX_TOOL_NAME_CHARS or len(raw_arguments) > MAX_TOOL_ARGUMENT_CHARS:
         raise ValueError("tool call field size")
