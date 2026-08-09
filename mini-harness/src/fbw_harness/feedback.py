@@ -123,13 +123,25 @@ def _classify(result: TestResult, combined: str) -> FeedbackKind:
     if result.timed_out:
         return FeedbackKind.TIMEOUT
     folded = combined.casefold()
-    if "error collecting" in folded or "error during collection" in folded:
+    if (
+        "[fbw_diagnostic:collection]" in folded
+        or "error collecting" in folded
+        or "error during collection" in folded
+    ):
         return FeedbackKind.COLLECTION_FAILURE
-    if "syntaxerror" in folded:
+    if "[fbw_diagnostic:syntax]" in folded or "syntaxerror" in folded:
         return FeedbackKind.SYNTAX_ERROR
-    if "importerror" in folded or "modulenotfounderror" in folded:
+    if (
+        "[fbw_diagnostic:import]" in folded
+        or "importerror" in folded
+        or "modulenotfounderror" in folded
+    ):
         return FeedbackKind.IMPORT_ERROR
-    if "assertionerror" in folded or re.search(r"(?m)^FAILED\s+", combined):
+    if (
+        "[fbw_diagnostic:assertion]" in folded
+        or "assertionerror" in folded
+        or re.search(r"(?m)^FAILED\s+", combined)
+    ):
         return FeedbackKind.ASSERTION_FAILURE
     if result.exit_code != 0:
         return FeedbackKind.UNKNOWN_TEST_FAILURE

@@ -11,6 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import fbw_harness.testing as testing_module
 from fbw_harness.config import HarnessConfig
 from fbw_harness.feedback import FeedbackEngine, fingerprint
 from fbw_harness.models import (
@@ -289,6 +290,72 @@ def test_runner_decodes_non_utf8_with_replacement(
     assert result.passed is False
     assert result.stdout == "out\ufffd"
     assert result.stderr == "err\ufffd"
+
+
+def test_runner_returns_stable_failure_when_second_reader_cannot_start(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    secret = "private-reader-start-detail"
+    process = _CompletedProcess(wait_outcomes=[0])
+    stopped: list[int] = []
+    start_calls = 0
+    original_start = testing_module.threading.Thread.start
+
+    def fail_second_start(thread: testing_module.threading.Thread) -> None:
+        nonlocal start_calls
+        start_calls += 1
+        if start_calls == 2:
+            raise RuntimeError(secret)
+        original_start(thread)
+
+    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr(testing_module.threading.Thread, "start", fail_second_start)
+    monkeypatch.setattr(
+        testing_module,
+        "_terminate_process_tree",
+        lambda current: stopped.append(current.pid),
+    )
+
+    result = HarnessTestRunner(HarnessConfig()).run(tmp_path)
+
+    assert result == HarnessTestResult(
+        False, 1, "", "Unable to start pytest.", result.duration_seconds
+    )
+    assert stopped == [4321]
+    assert process.wait_timeouts == [1]
+    assert secret not in result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    "early_diagnostic, expected_kind",
+    [
+        (b"ERROR collecting test_early.py", FeedbackKind.COLLECTION_FAILURE),
+        (b"SyntaxError: early invalid syntax", FeedbackKind.SYNTAX_ERROR),
+        (b"ModuleNotFoundError: early missing module", FeedbackKind.IMPORT_ERROR),
+        (b"AssertionError: early mismatch", FeedbackKind.ASSERTION_FAILURE),
+        (b"\nFAILED tests/test_early.py::test_x - assert 1 == 2", FeedbackKind.ASSERTION_FAILURE),
+    ],
+)
+def test_runner_preserves_fixed_early_diagnostic_fact_with_bounded_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    early_diagnostic: bytes,
+    expected_kind: FeedbackKind,
+) -> None:
+    noise = b"N" * 100_000
+    process = _CompletedProcess(
+        stdout=b"\xff" + early_diagnostic + b"\xfe" + noise,
+        returncode=1,
+    )
+    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: process)
+
+    result = HarnessTestRunner(HarnessConfig(output_tail_chars=7)).run(tmp_path)
+    feedback = FeedbackEngine(7).from_test(result)
+
+    assert feedback.kind is expected_kind
+    assert len(result.stdout) <= 96
+    assert result.stdout.endswith("N" * 7)
+    assert early_diagnostic.decode("ascii") not in result.stdout
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows taskkill contract")
