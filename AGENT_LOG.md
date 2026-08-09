@@ -270,6 +270,7 @@
 - 最终 review：116 类 quoted fragment 与 3,504 个 chunk 组合、mapping fuzz、known secret overlap/adjacent、63/64/65/10,000 深度均通过；Critical 0 / Important 0 / Minor 0，结论 APPROVED。
 - 最终验证：Task 8 `234 passed, 1 skipped`、全量 `498 passed, 1 skipped`、Ruff、format、当前树秘密扫描和累计 diff check 全部通过；唯一 skip 为 Windows 不适用的 POSIX killpg 分支。
 - 安全边界：输出在进入有界 tail 前脱敏；mapping 栈最多 64；TestRunner 的 `known_secrets` 是 required keyword-only，Task 11 必须把同一 tuple 同时传给 TestRunner 与 FeedbackEngine，并补集成测试。
+- 分支已推送；PR：[PR #8](https://github.com/01w-01/SE-agent/pull/8)。
 
 ## 3. 当前关键决定
 
