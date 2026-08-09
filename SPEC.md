@@ -352,8 +352,8 @@ SessionState 1 ── * Action 1 ── 1 PolicyDecision
 
 | 项目 | 规约 |
 |---|---|
-| 输入 | 固定配置的 `uv run pytest -q`、工作区和 60 秒默认超时 |
-| 行为 | 写入后自动启动固定参数子进程；捕获 stdout/stderr；Windows 超时后终止进程树 |
+| 输入 | 固定的当前 Python 解释器 `-m pytest`、声明式 `pytest_args`、工作区和 60 秒默认超时 |
+| 行为 | 写入后以 `shell=False` 启动固定参数子进程；双流并行排空并只保留有界安全尾部；Windows 超时后有界终止进程树 |
 | 输出 | 退出码、时长、截断输出和 TestResult |
 | 边界 | 模型不能提供命令、参数或 shell 片段；输出尾部默认最多 12,000 字符 |
 | 错误 | 命令缺失、收集错误、失败和超时均转为结构化反馈，不让主进程崩溃 |
@@ -363,9 +363,9 @@ SessionState 1 ── * Action 1 ── 1 PolicyDecision
 | 项目 | 规约 |
 |---|---|
 | 输入 | TestResult、工具结果和策略结果 |
-| 行为 | 分类、保守提取失败测试、脱敏、摘要、生成稳定指纹；将最新反馈置于下一轮高优先级上下文 |
+| 行为 | 在截断前按 `mapping -> global -> sk-token -> known-secret` 两层流式管线脱敏，再分类、保守提取失败测试、摘要并生成稳定指纹；将最新反馈置于下一轮高优先级上下文 |
 | 输出 | Feedback 与下一轮 Context |
-| 边界 | 不能可靠提取时保留原始摘要，不编造 expected/actual；最近反馈不得被旧历史挤出 |
+| 边界 | 不能可靠提取时保留脱敏摘要，不编造 expected/actual；最近反馈不得被旧历史挤出；已知 API Key 仅接受非空 ASCII 字符串并由 TestRunner 与 FeedbackEngine 同源注入，非法值固定拒绝 |
 | 错误 | 相同动作签名与反馈指纹连续 2 次判定 `no_progress` 并停止 |
 
 ### F-09 文件事务与回滚
