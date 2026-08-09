@@ -59,6 +59,11 @@ class _StructuredSecretRedactor:
         self._after_word_space = False
         self._quote: int | None = None
         self._escaped = False
+        self._mapping_depth = 0
+        self._last_significant: int | None = None
+        self._quoted_field: bytes | None = None
+        self._key_buffer = bytearray()
+        self._key_valid = False
 
     def feed(self, chunk: bytes) -> bytes:
         output = bytearray()
@@ -83,6 +88,25 @@ class _StructuredSecretRedactor:
             elif byte == self._quote:
                 self._mode = "normal"
             return
+        if self._mode == "key_quote":
+            output.append(byte)
+            if self._escaped:
+                self._escaped = False
+                self._key_valid = False
+            elif byte == ord("\\"):
+                self._escaped = True
+                self._key_valid = False
+            elif byte == self._quote:
+                self._mode = "normal"
+                self._quoted_field = bytes(self._key_buffer).lower() if self._key_valid else None
+                self._last_significant = byte
+            elif byte in _TOKEN_BYTES and self._key_valid:
+                self._key_buffer.append(byte)
+                if len(self._key_buffer) > 32:
+                    del self._key_buffer[:-32]
+            else:
+                self._key_valid = False
+            return
         if self._mode == "unquoted":
             if byte in _VALUE_DELIMITERS:
                 self._mode = "normal"
@@ -106,24 +130,32 @@ class _StructuredSecretRedactor:
 
     def _consume_normal(self, byte: int, output: bytearray) -> None:
         word = bytes(self._word_tail).lower()
+        field = self._quoted_field if self._quoted_field is not None else word
         if byte in b"=":
             output.append(byte)
-            if _is_sensitive_field(word):
+            if field == b"authorization":
+                output.extend(_REDACTED)
+                self._mode = "line"
+            elif _is_sensitive_field(field):
                 output.extend(_REDACTED)
                 self._mode = "await_value"
             self._word_tail.clear()
+            self._quoted_field = None
             self._after_word_space = False
+            self._last_significant = byte
             return
         if byte == ord(":"):
             output.append(byte)
-            if word == b"authorization":
+            if field == b"authorization":
                 output.extend(_REDACTED)
                 self._mode = "line"
-            elif _is_sensitive_field(word):
+            elif _is_sensitive_field(field):
                 output.extend(_REDACTED)
                 self._mode = "await_value"
             self._word_tail.clear()
+            self._quoted_field = None
             self._after_word_space = False
+            self._last_significant = byte
             return
         if byte in b" \t":
             output.append(byte)
@@ -137,10 +169,28 @@ class _StructuredSecretRedactor:
         if byte in b"\r\n":
             output.append(byte)
             self._word_tail.clear()
+            self._quoted_field = None
+            self._after_word_space = False
+            return
+
+        if (
+            byte in b"'\""
+            and self._mapping_depth > 0
+            and self._last_significant in (ord("{"), ord(","))
+        ):
+            output.append(byte)
+            self._mode = "key_quote"
+            self._quote = byte
+            self._escaped = False
+            self._key_buffer.clear()
+            self._key_valid = True
+            self._word_tail.clear()
             self._after_word_space = False
             return
 
         output.append(byte)
+        if self._quoted_field is not None:
+            self._quoted_field = None
         if self._after_word_space:
             self._word_tail.clear()
             self._after_word_space = False
@@ -150,12 +200,18 @@ class _StructuredSecretRedactor:
                 del self._word_tail[:-32]
         else:
             self._word_tail.clear()
+        if byte == ord("{"):
+            self._mapping_depth += 1
+        elif byte == ord("}"):
+            self._mapping_depth = max(0, self._mapping_depth - 1)
+        self._last_significant = byte
 
 
 class _SkTokenRedactor:
     def __init__(self) -> None:
         self._candidate = bytearray()
         self._suppressing = False
+        self._previous_is_alnum = False
 
     def feed(self, chunk: bytes) -> bytes:
         output = bytearray()
@@ -166,6 +222,8 @@ class _SkTokenRedactor:
     def finish(self) -> bytes:
         remaining = bytes(self._candidate)
         self._candidate.clear()
+        if remaining:
+            self._previous_is_alnum = _is_ascii_alnum(remaining[-1])
         return remaining
 
     def _consume(self, byte: int, output: bytearray) -> None:
@@ -178,20 +236,21 @@ class _SkTokenRedactor:
 
         expected = (ord("s"), ord("k"), ord("-"))
         if len(self._candidate) < 3:
+            if not self._candidate and (byte | 32 != ord("s") or self._previous_is_alnum):
+                self._emit_safe(bytes((byte,)), output)
+                return
             wanted = expected[len(self._candidate)]
             if byte | 32 == wanted:
                 self._candidate.append(byte)
                 return
             if self._candidate:
-                output.extend(self._candidate)
+                self._emit_safe(bytes(self._candidate), output)
                 self._candidate.clear()
                 self._consume(byte, output)
                 return
-            output.append(byte)
-            return
 
         if byte not in _TOKEN_BYTES:
-            output.extend(self._candidate)
+            self._emit_safe(bytes(self._candidate), output)
             self._candidate.clear()
             self._consume(byte, output)
             return
@@ -200,6 +259,11 @@ class _SkTokenRedactor:
             output.extend(_REDACTED)
             self._candidate.clear()
             self._suppressing = True
+
+    def _emit_safe(self, value: bytes, output: bytearray) -> None:
+        output.extend(value)
+        if value:
+            self._previous_is_alnum = _is_ascii_alnum(value[-1])
 
 
 class _KnownSecretRedactor:
@@ -254,6 +318,10 @@ def _is_sensitive_field(word: bytes) -> bool:
     return any(
         canonical == suffix or canonical.endswith(b"_" + suffix) for suffix in _SENSITIVE_SUFFIXES
     )
+
+
+def _is_ascii_alnum(byte: int) -> bool:
+    return ord("0") <= byte <= ord("9") or ord("a") <= (byte | 32) <= ord("z")
 
 
 class FeedbackEngine:

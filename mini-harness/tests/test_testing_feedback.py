@@ -13,7 +13,7 @@ import pytest
 
 import fbw_harness.testing as testing_module
 from fbw_harness.config import HarnessConfig
-from fbw_harness.feedback import FeedbackEngine, fingerprint
+from fbw_harness.feedback import FeedbackEngine, OutputRedactor, fingerprint
 from fbw_harness.models import (
     Feedback,
     FeedbackKind,
@@ -35,9 +35,9 @@ def _write_project(root: Path, source: str) -> Path:
 
 
 def _run_project(root: Path, *, timeout: int = 10, args: tuple[str, ...] = ("-q",)):
-    return HarnessTestRunner(HarnessConfig(pytest_timeout_seconds=timeout, pytest_args=args)).run(
-        root
-    )
+    return HarnessTestRunner(
+        HarnessConfig(pytest_timeout_seconds=timeout, pytest_args=args), known_secrets=()
+    ).run(root)
 
 
 def _result(
@@ -59,6 +59,15 @@ def _result(
     )
 
 
+def _stream_redact(payload: bytes, *, chunk_size: int = 1) -> str:
+    redactor = OutputRedactor()
+    safe = b"".join(
+        redactor.feed(payload[offset : offset + chunk_size])
+        for offset in range(0, len(payload), chunk_size)
+    )
+    return (safe + redactor.finish()).decode("utf-8", errors="replace")
+
+
 def test_runner_runs_real_pytest_in_workspace_and_accepts_workspace_object(tmp_path: Path) -> None:
     project = _write_project(
         tmp_path / "project",
@@ -67,12 +76,94 @@ def test_runner_runs_real_pytest_in_workspace_and_accepts_workspace_object(tmp_p
         "    assert Path.cwd() == Path(__file__).parent\n",
     )
 
-    result = HarnessTestRunner(HarnessConfig(pytest_timeout_seconds=10)).run(Workspace(project))
+    result = HarnessTestRunner(HarnessConfig(pytest_timeout_seconds=10), known_secrets=()).run(
+        Workspace(project)
+    )
 
     assert result.passed is True
     assert result.exit_code == 0
     assert result.timed_out is False
     assert result.duration_seconds >= 0
+
+
+def test_runner_requires_known_secrets_as_keyword_only() -> None:
+    with pytest.raises(TypeError):
+        HarnessTestRunner(HarnessConfig())
+    with pytest.raises(TypeError):
+        HarnessTestRunner(HarnessConfig(), ())  # type: ignore[misc]
+
+    runner = HarnessTestRunner(HarnessConfig(), known_secrets=())
+
+    assert isinstance(runner, HarnessTestRunner)
+
+
+@pytest.mark.parametrize(
+    "payload, hidden",
+    [
+        (b"authorization=Basic basic-private-value", "basic-private-value"),
+        (b"AUTHORIZATION : Bearer bearer-private-value", "bearer-private-value"),
+        (b'Authorization = "quoted-private-value"', "quoted-private-value"),
+        (b"Authorization: eof-private-value", "eof-private-value"),
+    ],
+)
+@pytest.mark.parametrize("chunk_size", [1, 3])
+def test_output_redactor_handles_authorization_equals_colon_and_eof(
+    payload: bytes, hidden: str, chunk_size: int
+) -> None:
+    safe = _stream_redact(payload, chunk_size=chunk_size)
+
+    assert hidden not in safe
+    assert "[REDACTED]" in safe
+
+
+@pytest.mark.parametrize(
+    "payload, hidden",
+    [
+        (b'{"api_key": "json-private-value", "note": "visible"}', "json-private-value"),
+        (b"{'token':'dict-private-value','note':'visible'}", "dict-private-value"),
+        (b'{"OPENAI_API_KEY":"upper-private-value"}', "upper-private-value"),
+    ],
+)
+def test_output_redactor_handles_quoted_mapping_keys_across_single_byte_chunks(
+    payload: bytes, hidden: str
+) -> None:
+    safe = _stream_redact(payload)
+
+    assert hidden not in safe
+    assert "[REDACTED]" in safe
+    if b"note" in payload:
+        assert "visible" in safe
+
+
+def test_output_redactor_does_not_treat_quoted_prose_as_mapping_field() -> None:
+    prose = b'He said "token": visible text'
+
+    assert _stream_redact(prose) == prose.decode("ascii")
+
+
+def test_runner_and_feedback_redact_quoted_json_field_before_tail(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    sensitive_suffix = "J" * 6
+    process = _CompletedProcess(
+        stdout=b'{"api_key":"' + b"J" * 100_000,
+        returncode=1,
+    )
+    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: process)
+
+    result = HarnessTestRunner(HarnessConfig(output_tail_chars=6), known_secrets=()).run(tmp_path)
+    feedback = FeedbackEngine(6).from_test(result)
+
+    assert sensitive_suffix not in result.stdout
+    assert sensitive_suffix not in feedback.output_tail
+
+
+def test_output_redactor_requires_left_boundary_for_sk_token_across_chunks() -> None:
+    ordinary = b"task-abcdefghijk"
+    secret = b"prefix " + b"s" + b"k-" + b"abcdefghijk"
+
+    assert _stream_redact(ordinary) == ordinary.decode("ascii")
+    assert "abcdefghijk" not in _stream_redact(secret)
 
 
 def test_runner_reports_real_assertion_failure(tmp_path: Path) -> None:
@@ -141,7 +232,7 @@ def test_runner_maps_root_resolution_errors_without_leaking_details(
 
     monkeypatch.setattr(Path, "resolve", fail_resolve)
 
-    result = HarnessTestRunner(HarnessConfig()).run(tmp_path)
+    result = HarnessTestRunner(HarnessConfig(), known_secrets=()).run(tmp_path)
 
     assert result.passed is False
     assert result.exit_code == 1
@@ -161,7 +252,7 @@ def test_runner_maps_process_start_errors_without_leaking_details(
         lambda *args, **kwargs: (_ for _ in ()).throw(error_type(secret)),
     )
 
-    result = HarnessTestRunner(HarnessConfig()).run(tmp_path)
+    result = HarnessTestRunner(HarnessConfig(), known_secrets=()).run(tmp_path)
 
     assert result.passed is False
     assert result.exit_code == 1
@@ -179,7 +270,9 @@ def test_runner_maps_command_construction_runtime_error_without_leaking_details(
         def __iter__(self):
             raise RuntimeError(secret)
 
-    result = HarnessTestRunner(HarnessConfig(pytest_args=ExplodingArgs())).run(tmp_path)
+    result = HarnessTestRunner(HarnessConfig(pytest_args=ExplodingArgs()), known_secrets=()).run(
+        tmp_path
+    )
 
     assert result.passed is False
     assert result.exit_code == 1
@@ -190,7 +283,9 @@ def test_runner_maps_command_construction_runtime_error_without_leaking_details(
 def test_runner_maps_nul_pytest_argument_to_stable_start_failure(tmp_path: Path) -> None:
     secret = "private-nul-argument"
 
-    result = HarnessTestRunner(HarnessConfig(pytest_args=("\x00" + secret,))).run(tmp_path)
+    result = HarnessTestRunner(HarnessConfig(pytest_args=("\x00" + secret,)), known_secrets=()).run(
+        tmp_path
+    )
 
     assert result.passed is False
     assert result.exit_code == 1
@@ -212,7 +307,7 @@ def test_runner_bounds_stdout_and_stderr_while_draining_both_pipes(tmp_path: Pat
         pytest_args=("-q", "-s"),
     )
 
-    result = HarnessTestRunner(config).run(project)
+    result = HarnessTestRunner(config, known_secrets=()).run(project)
 
     assert result.passed is True
     assert len(result.stdout) <= 256
@@ -262,7 +357,7 @@ def test_runner_builds_fixed_command_without_shell(
     monkeypatch.setattr(subprocess, "Popen", fake_popen)
     config = HarnessConfig(pytest_args=("-q", "tests/unit"))
 
-    result = HarnessTestRunner(config).run(tmp_path)
+    result = HarnessTestRunner(config, known_secrets=()).run(tmp_path)
 
     assert result.passed is True
     assert captured["command"] == [sys.executable, "-m", "pytest", "-q", "tests/unit"]
@@ -285,7 +380,7 @@ def test_runner_decodes_non_utf8_with_replacement(
         lambda *args, **kwargs: _CompletedProcess(b"out\xff", b"err\xfe", returncode=1),
     )
 
-    result = HarnessTestRunner(HarnessConfig()).run(tmp_path)
+    result = HarnessTestRunner(HarnessConfig(), known_secrets=()).run(tmp_path)
 
     assert result.passed is False
     assert result.stdout == "out\ufffd"
@@ -316,7 +411,7 @@ def test_runner_returns_stable_failure_when_second_reader_cannot_start(
         lambda current: stopped.append(current.pid),
     )
 
-    result = HarnessTestRunner(HarnessConfig()).run(tmp_path)
+    result = HarnessTestRunner(HarnessConfig(), known_secrets=()).run(tmp_path)
 
     assert result == HarnessTestResult(
         False, 1, "", "Unable to start pytest.", result.duration_seconds
@@ -349,7 +444,7 @@ def test_runner_preserves_fixed_early_diagnostic_fact_with_bounded_output(
     )
     monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: process)
 
-    result = HarnessTestRunner(HarnessConfig(output_tail_chars=7)).run(tmp_path)
+    result = HarnessTestRunner(HarnessConfig(output_tail_chars=7), known_secrets=()).run(tmp_path)
     feedback = FeedbackEngine(7).from_test(result)
 
     assert feedback.kind is expected_kind
@@ -367,7 +462,7 @@ def test_runner_detects_stream_start_failed_across_three_byte_chunks(
     )
     monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: process)
 
-    result = HarnessTestRunner(HarnessConfig(output_tail_chars=3)).run(tmp_path)
+    result = HarnessTestRunner(HarnessConfig(output_tail_chars=3), known_secrets=()).run(tmp_path)
 
     assert FeedbackEngine(3).from_test(result).kind is FeedbackKind.ASSERTION_FAILURE
 
@@ -394,7 +489,7 @@ def test_runner_redacts_generic_secret_stream_before_bounded_tail(
     )
     monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: process)
 
-    result = HarnessTestRunner(HarnessConfig(output_tail_chars=5)).run(tmp_path)
+    result = HarnessTestRunner(HarnessConfig(output_tail_chars=5), known_secrets=()).run(tmp_path)
     feedback = FeedbackEngine(5).from_test(result)
 
     assert len(result.stdout) <= 5
@@ -455,7 +550,9 @@ def test_windows_timeout_kills_entire_process_tree_with_fixed_arguments(
         ),
     )
 
-    result = HarnessTestRunner(HarnessConfig(pytest_timeout_seconds=1)).run(tmp_path)
+    result = HarnessTestRunner(HarnessConfig(pytest_timeout_seconds=1), known_secrets=()).run(
+        tmp_path
+    )
 
     assert result.timed_out is True
     assert taskkill_calls == [
@@ -479,7 +576,9 @@ def test_windows_taskkill_nonzero_uses_only_bounded_reap(
         lambda *args, **kwargs: SimpleNamespace(returncode=1),
     )
 
-    result = HarnessTestRunner(HarnessConfig(pytest_timeout_seconds=1)).run(tmp_path)
+    result = HarnessTestRunner(HarnessConfig(pytest_timeout_seconds=1), known_secrets=()).run(
+        tmp_path
+    )
 
     assert result.timed_out is True
     assert result.exit_code == 124
@@ -500,7 +599,9 @@ def test_windows_taskkill_timeout_returns_stable_result_with_bounded_reap(
         lambda *args, **kwargs: (_ for _ in ()).throw(subprocess.TimeoutExpired(secret, 2)),
     )
 
-    result = HarnessTestRunner(HarnessConfig(pytest_timeout_seconds=1)).run(tmp_path)
+    result = HarnessTestRunner(HarnessConfig(pytest_timeout_seconds=1), known_secrets=()).run(
+        tmp_path
+    )
 
     assert result.timed_out is True
     assert result.exit_code == 124
@@ -517,7 +618,9 @@ def test_posix_timeout_kills_process_group(monkeypatch: pytest.MonkeyPatch, tmp_
     monkeypatch.setattr(os, "getpgid", lambda pid: 9876)
     monkeypatch.setattr(os, "killpg", lambda group, sig: killed.append((group, sig)))
 
-    result = HarnessTestRunner(HarnessConfig(pytest_timeout_seconds=1)).run(tmp_path)
+    result = HarnessTestRunner(HarnessConfig(pytest_timeout_seconds=1), known_secrets=()).run(
+        tmp_path
+    )
 
     assert result.timed_out is True
     assert killed == [(9876, signal.SIGKILL)]
@@ -543,7 +646,9 @@ def test_timeout_returns_stable_result_when_tree_termination_fails(
     else:
         monkeypatch.setattr(os, "getpgid", lambda pid: (_ for _ in ()).throw(OSError(secret)))
 
-    result = HarnessTestRunner(HarnessConfig(pytest_timeout_seconds=1)).run(tmp_path)
+    result = HarnessTestRunner(HarnessConfig(pytest_timeout_seconds=1), known_secrets=()).run(
+        tmp_path
+    )
 
     assert result == HarnessTestResult(False, 124, "", "", result.duration_seconds, True)
     assert secret not in result.stdout + result.stderr
