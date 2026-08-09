@@ -33,7 +33,7 @@ _DIAGNOSTIC_OVERLAP_BYTES = (
 class TestRunner:
     """Run the configured pytest selection without accepting a model-provided command."""
 
-    def __init__(self, config: HarnessConfig, known_secrets: tuple[str, ...] = ()) -> None:
+    def __init__(self, config: HarnessConfig, *, known_secrets: tuple[str, ...]) -> None:
         self._config = config
         self._known_secrets = tuple(secret for secret in known_secrets if secret)
 
