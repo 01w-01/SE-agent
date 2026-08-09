@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 from .config import HarnessConfig
-from .feedback import OutputRedactor
+from .feedback import OutputRedactor, _validate_known_secrets
 from .models import TestResult
 from .workspace import Workspace
 
@@ -35,7 +35,7 @@ class TestRunner:
 
     def __init__(self, config: HarnessConfig, *, known_secrets: tuple[str, ...]) -> None:
         self._config = config
-        self._known_secrets = tuple(secret for secret in known_secrets if secret)
+        self._known_secrets = _validate_known_secrets(known_secrets)
 
     def run(self, workspace: Path | Workspace) -> TestResult:
         started = time.perf_counter()

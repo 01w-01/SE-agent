@@ -25,6 +25,7 @@ _MAPPING_VALUE_DELIMITERS = frozenset(b" \t\r\n,}]")
 _GLOBAL_VALUE_DELIMITERS = frozenset(b" \t\r\n,;'\"}]")
 _FIELD_BYTES = frozenset(b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-. \t")
 _TOKEN_BYTES = frozenset(b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
+_KNOWN_SECRETS_ERROR = "known_secrets must contain non-empty ASCII strings"
 
 _SUMMARY_BY_KIND = {
     FeedbackKind.PASSED: "Pytest passed.",
@@ -41,6 +42,7 @@ class OutputRedactor:
     """Incrementally remove secrets without retaining unbounded raw values."""
 
     def __init__(self, known_secrets: tuple[str, ...] = ()) -> None:
+        known_secrets = _validate_known_secrets(known_secrets)
         self._mapping = _MappingSecretRedactor()
         self._global = _GlobalSecretRedactor()
         self._sk_tokens = _SkTokenRedactor()
@@ -212,6 +214,11 @@ class _GlobalSecretRedactor:
         self._candidate = bytearray()
         self._quote: int | None = None
         self._escaped = False
+        self._fragment_quote: int | None = None
+        self._fragment_escaped = False
+        self._fragment_valid = False
+        self._fragment_buffer = bytearray()
+        self._pending_quoted_field: bytes | None = None
 
     def feed(self, chunk: bytes) -> bytes:
         output = bytearray()
@@ -245,6 +252,11 @@ class _GlobalSecretRedactor:
         if self._mode == "suppress_unquoted":
             if byte in _GLOBAL_VALUE_DELIMITERS:
                 self._mode = "normal"
+                if byte in b"'\"":
+                    self._reset_fragment()
+                    self._pending_quoted_field = None
+                    output.append(byte)
+                    return
                 self._consume_normal(byte, output)
             return
         if self._mode == "await_value":
@@ -265,37 +277,87 @@ class _GlobalSecretRedactor:
         self._consume_normal(byte, output)
 
     def _consume_normal(self, byte: int, output: bytearray) -> None:
+        fragment_event = self._track_quoted_fragment(byte)
         if byte in b"\r\n":
+            self._pending_quoted_field = None
             self._flush_candidate(output)
             output.append(byte)
             return
         if byte in b"=:":
-            canonical = _canonical_field(bytes(self._candidate))
+            canonical = self._pending_quoted_field or _canonical_field(bytes(self._candidate))
             authorization = canonical == b"authorization" or canonical.endswith(b"_authorization")
             sensitive = authorization or _is_sensitive_field(canonical)
+            self._pending_quoted_field = None
             self._flush_candidate(output)
             output.append(byte)
             if sensitive:
+                self._reset_fragment()
                 output.extend(_REDACTED)
                 self._mode = "line" if authorization else "await_value"
             return
         if byte in _FIELD_BYTES:
+            if self._pending_quoted_field is not None and byte not in b" \t":
+                self._pending_quoted_field = None
             if byte in b" \t" and _is_bearer_field(_canonical_field(bytes(self._candidate))):
                 self._flush_candidate(output)
                 output.append(byte)
                 output.extend(_REDACTED)
+                self._reset_fragment()
+                self._pending_quoted_field = None
                 self._mode = "await_value"
                 return
             self._candidate.append(byte)
             if len(self._candidate) > _MAX_FIELD_TAIL:
                 output.append(self._candidate.pop(0))
             return
+        if fragment_event != "closed":
+            self._pending_quoted_field = None
         self._flush_candidate(output)
         output.append(byte)
 
     def _flush_candidate(self, output: bytearray) -> None:
         output.extend(self._candidate)
         self._candidate.clear()
+
+    def _track_quoted_fragment(self, byte: int) -> str | None:
+        if self._fragment_quote is None:
+            if byte not in b"'\"":
+                return None
+            self._pending_quoted_field = None
+            self._fragment_quote = byte
+            self._fragment_escaped = False
+            self._fragment_valid = True
+            self._fragment_buffer.clear()
+            return "opened"
+
+        if self._fragment_escaped:
+            self._fragment_escaped = False
+            self._fragment_valid = False
+            return None
+        if byte == ord("\\"):
+            self._fragment_escaped = True
+            self._fragment_valid = False
+            return None
+        if byte == self._fragment_quote:
+            self._pending_quoted_field = (
+                _canonical_field(bytes(self._fragment_buffer)) if self._fragment_valid else None
+            )
+            self._reset_fragment()
+            return "closed"
+        if byte not in _FIELD_BYTES:
+            self._fragment_valid = False
+            return None
+        if self._fragment_valid:
+            self._fragment_buffer.append(byte)
+            if len(self._fragment_buffer) > _MAX_FIELD_TAIL:
+                del self._fragment_buffer[:-_MAX_FIELD_TAIL]
+        return None
+
+    def _reset_fragment(self) -> None:
+        self._fragment_quote = None
+        self._fragment_escaped = False
+        self._fragment_valid = False
+        self._fragment_buffer.clear()
 
 
 class _SkTokenRedactor:
@@ -361,7 +423,7 @@ class _KnownSecretRedactor:
     def __init__(self, known_secrets: tuple[str, ...]) -> None:
         self._patterns = tuple(
             sorted(
-                {secret.encode("utf-8").lower() for secret in known_secrets if secret},
+                {secret.encode("ascii").lower() for secret in known_secrets},
                 key=len,
             )
         )
@@ -433,6 +495,15 @@ def _canonical_field(field: bytes) -> bytes:
     return bytes(canonical).strip(b"_")
 
 
+def _validate_known_secrets(known_secrets: object) -> tuple[str, ...]:
+    if not isinstance(known_secrets, tuple) or any(
+        not isinstance(secret, str) or not secret or not secret.isascii()
+        for secret in known_secrets
+    ):
+        raise ValueError(_KNOWN_SECRETS_ERROR)
+    return known_secrets
+
+
 def _is_ascii_alnum(byte: int) -> bool:
     return ord("0") <= byte <= ord("9") or ord("a") <= (byte | 32) <= ord("z")
 
@@ -446,7 +517,7 @@ class FeedbackEngine:
         if type(output_tail_chars) is not int or output_tail_chars <= 0:
             raise ValueError("output_tail_chars must be a positive integer")
         self._output_tail_chars = output_tail_chars
-        self._known_secrets = tuple(secret for secret in known_secrets if secret)
+        self._known_secrets = _validate_known_secrets(known_secrets)
 
     def from_test(self, result: TestResult) -> Feedback:
         combined = _combine_output(result.stdout, result.stderr)
