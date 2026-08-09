@@ -5,6 +5,7 @@ import re
 import signal
 import subprocess
 import sys
+from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -128,15 +129,123 @@ def test_runner_does_not_interpret_pytest_argument_as_shell_syntax(tmp_path: Pat
     assert marker.exists() is False
 
 
+@pytest.mark.parametrize("error_type", [OSError, ValueError, RuntimeError])
+def test_runner_maps_root_resolution_errors_without_leaking_details(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, error_type: type[Exception]
+) -> None:
+    secret = "private-root-resolution-detail"
+
+    def fail_resolve(self: Path, strict: bool = False) -> Path:
+        raise error_type(secret)
+
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+
+    result = HarnessTestRunner(HarnessConfig()).run(tmp_path)
+
+    assert result.passed is False
+    assert result.exit_code == 1
+    assert result.stdout == ""
+    assert result.stderr == "Unable to start pytest."
+    assert secret not in result.stderr
+
+
+@pytest.mark.parametrize("error_type", [OSError, ValueError, RuntimeError])
+def test_runner_maps_process_start_errors_without_leaking_details(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, error_type: type[Exception]
+) -> None:
+    secret = "private-process-start-detail"
+    monkeypatch.setattr(
+        subprocess,
+        "Popen",
+        lambda *args, **kwargs: (_ for _ in ()).throw(error_type(secret)),
+    )
+
+    result = HarnessTestRunner(HarnessConfig()).run(tmp_path)
+
+    assert result.passed is False
+    assert result.exit_code == 1
+    assert result.stdout == ""
+    assert result.stderr == "Unable to start pytest."
+    assert secret not in result.stderr
+
+
+def test_runner_maps_command_construction_runtime_error_without_leaking_details(
+    tmp_path: Path,
+) -> None:
+    secret = "private-command-construction-detail"
+
+    class ExplodingArgs(tuple[str, ...]):
+        def __iter__(self):
+            raise RuntimeError(secret)
+
+    result = HarnessTestRunner(HarnessConfig(pytest_args=ExplodingArgs())).run(tmp_path)
+
+    assert result.passed is False
+    assert result.exit_code == 1
+    assert result.stderr == "Unable to start pytest."
+    assert secret not in result.stderr
+
+
+def test_runner_maps_nul_pytest_argument_to_stable_start_failure(tmp_path: Path) -> None:
+    secret = "private-nul-argument"
+
+    result = HarnessTestRunner(HarnessConfig(pytest_args=("\x00" + secret,))).run(tmp_path)
+
+    assert result.passed is False
+    assert result.exit_code == 1
+    assert result.stderr == "Unable to start pytest."
+    assert secret not in result.stderr
+
+
+def test_runner_bounds_stdout_and_stderr_while_draining_both_pipes(tmp_path: Path) -> None:
+    project = _write_project(
+        tmp_path / "project",
+        "import os\n\n"
+        "def test_high_output():\n"
+        "    os.write(1, b'O' * 1_000_000)\n"
+        "    os.write(2, b'E' * 1_000_000)\n",
+    )
+    config = HarnessConfig(
+        pytest_timeout_seconds=10,
+        output_tail_chars=256,
+        pytest_args=("-q", "-s"),
+    )
+
+    result = HarnessTestRunner(config).run(project)
+
+    assert result.passed is True
+    assert len(result.stdout) <= 256
+    assert len(result.stderr) <= 256
+    assert "passed" in result.stdout
+    assert "E" in result.stderr
+
+
 class _CompletedProcess:
-    def __init__(self, stdout: bytes = b"", stderr: bytes = b"", returncode: int = 0):
-        self.stdout = stdout
-        self.stderr = stderr
+    def __init__(
+        self,
+        stdout: bytes = b"",
+        stderr: bytes = b"",
+        returncode: int = 0,
+        wait_outcomes: list[int | BaseException] | None = None,
+    ):
+        self.stdout = BytesIO(stdout)
+        self.stderr = BytesIO(stderr)
         self.returncode = returncode
         self.pid = 4321
+        self.wait_outcomes = wait_outcomes or [returncode]
+        self.wait_timeouts: list[float | None] = []
+        self.kill_calls = 0
 
-    def communicate(self, timeout: int | None = None) -> tuple[bytes, bytes]:
-        return self.stdout, self.stderr
+    def wait(self, timeout: float | None = None) -> int:
+        self.wait_timeouts.append(timeout)
+        outcome = self.wait_outcomes.pop(0)
+        if isinstance(outcome, BaseException):
+            raise outcome
+        self.returncode = outcome
+        return outcome
+
+    def kill(self) -> None:
+        self.kill_calls += 1
 
 
 def test_runner_builds_fixed_command_without_shell(
@@ -186,16 +295,10 @@ def test_runner_decodes_non_utf8_with_replacement(
 def test_windows_timeout_kills_entire_process_tree_with_fixed_arguments(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    class TimedOutProcess(_CompletedProcess):
-        calls = 0
-
-        def communicate(self, timeout: int | None = None) -> tuple[bytes, bytes]:
-            self.calls += 1
-            if self.calls == 1:
-                raise subprocess.TimeoutExpired("pytest", timeout or 1, output=b"partial")
-            return b"after", b""
-
-    process = TimedOutProcess()
+    process = _CompletedProcess(
+        stdout=b"after",
+        wait_outcomes=[subprocess.TimeoutExpired("pytest", 1), 124],
+    )
     taskkill_calls: list[tuple[list[str], dict[str, object]]] = []
     monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: process)
     monkeypatch.setattr(
@@ -212,25 +315,17 @@ def test_windows_timeout_kills_entire_process_tree_with_fixed_arguments(
     assert taskkill_calls == [
         (
             ["taskkill", "/T", "/F", "/PID", "4321"],
-            {"check": False, "capture_output": True, "shell": False},
+            {"check": False, "capture_output": True, "shell": False, "timeout": 2},
         )
     ]
+    assert process.wait_timeouts == [1, 1]
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows taskkill contract")
-def test_windows_taskkill_nonzero_returns_without_waiting_again(
+def test_windows_taskkill_nonzero_uses_only_bounded_reap(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    class TimedOutProcess(_CompletedProcess):
-        calls = 0
-
-        def communicate(self, timeout: int | None = None) -> tuple[bytes, bytes]:
-            self.calls += 1
-            if self.calls > 1:
-                raise AssertionError("runner waited after taskkill reported failure")
-            raise subprocess.TimeoutExpired("pytest", timeout or 1)
-
-    process = TimedOutProcess()
+    process = _CompletedProcess(wait_outcomes=[subprocess.TimeoutExpired("pytest", 1), 124])
     monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: process)
     monkeypatch.setattr(
         subprocess,
@@ -242,21 +337,35 @@ def test_windows_taskkill_nonzero_returns_without_waiting_again(
 
     assert result.timed_out is True
     assert result.exit_code == 124
-    assert process.calls == 1
+    assert process.wait_timeouts == [1, 1]
+    assert process.kill_calls == 1
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows taskkill contract")
+def test_windows_taskkill_timeout_returns_stable_result_with_bounded_reap(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    secret = "private-taskkill-timeout-detail"
+    process = _CompletedProcess(wait_outcomes=[subprocess.TimeoutExpired("pytest", 1), 124])
+    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(subprocess.TimeoutExpired(secret, 2)),
+    )
+
+    result = HarnessTestRunner(HarnessConfig(pytest_timeout_seconds=1)).run(tmp_path)
+
+    assert result.timed_out is True
+    assert result.exit_code == 124
+    assert process.wait_timeouts == [1, 1]
+    assert process.kill_calls == 1
+    assert secret not in result.stdout + result.stderr
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX process-group contract")
 def test_posix_timeout_kills_process_group(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    class TimedOutProcess(_CompletedProcess):
-        calls = 0
-
-        def communicate(self, timeout: int | None = None) -> tuple[bytes, bytes]:
-            self.calls += 1
-            if self.calls == 1:
-                raise subprocess.TimeoutExpired("pytest", timeout or 1)
-            return b"", b""
-
-    process = TimedOutProcess()
+    process = _CompletedProcess(wait_outcomes=[subprocess.TimeoutExpired("pytest", 1), 124])
     killed: list[tuple[int, signal.Signals]] = []
     monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: process)
     monkeypatch.setattr(os, "getpgid", lambda pid: 9876)
@@ -266,18 +375,21 @@ def test_posix_timeout_kills_process_group(monkeypatch: pytest.MonkeyPatch, tmp_
 
     assert result.timed_out is True
     assert killed == [(9876, signal.SIGKILL)]
+    assert process.wait_timeouts == [1, 1]
 
 
 def test_timeout_returns_stable_result_when_tree_termination_fails(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    secret = "sk-termination-secret"
+    secret = "sk-" + "termination-secret"
 
-    class TimedOutProcess(_CompletedProcess):
-        def communicate(self, timeout: int | None = None) -> tuple[bytes, bytes]:
-            raise subprocess.TimeoutExpired("pytest", timeout or 1)
-
-    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: TimedOutProcess())
+    process = _CompletedProcess(
+        wait_outcomes=[
+            subprocess.TimeoutExpired("pytest", 1),
+            subprocess.TimeoutExpired("pytest", 1),
+        ]
+    )
+    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: process)
     if os.name == "nt":
         monkeypatch.setattr(
             subprocess, "run", lambda *args, **kwargs: (_ for _ in ()).throw(OSError(secret))
@@ -289,6 +401,8 @@ def test_timeout_returns_stable_result_when_tree_termination_fails(
 
     assert result == HarnessTestResult(False, 124, "", "", result.duration_seconds, True)
     assert secret not in result.stdout + result.stderr
+    assert process.wait_timeouts == [1, 1]
+    assert process.kill_calls == 1
 
 
 @pytest.mark.parametrize(
@@ -351,7 +465,7 @@ def test_feedback_does_not_invent_failure_details_for_empty_unknown_output() -> 
 
 
 def test_feedback_rejects_untrusted_failed_test_names() -> None:
-    secret = "sk-malicious-failed-test-name"
+    secret = "sk-" + "malicious-failed-test-name"
     absolute = str(Path.cwd().resolve() / "test_private.py::test_secret")
     result = _result(
         stderr="AssertionError",
@@ -364,6 +478,53 @@ def test_feedback_rejects_untrusted_failed_test_names() -> None:
 
 
 @pytest.mark.parametrize(
+    "unsafe_node_id",
+    [
+        "C:/tests/test_private.py::test_secret",
+        "C:\\tests\\test_private.py::test_secret",
+        "/tests/test_private.py::test_secret",
+        "tests//test_private.py::test_secret",
+        "tests\\\\test_private.py::test_secret",
+        "./tests/test_private.py::test_secret",
+        ".\\tests\\test_private.py::test_secret",
+        "../tests/test_private.py::test_secret",
+        "..\\tests\\test_private.py::test_secret",
+        "tests/../test_private.py::test_secret",
+        "tests\\..\\test_private.py::test_secret",
+    ],
+)
+def test_feedback_rejects_rooted_or_noncanonical_node_ids(unsafe_node_id: str) -> None:
+    result = _result(
+        stderr=f"FAILED {unsafe_node_id} - AssertionError",
+        failed_tests=(unsafe_node_id,),
+    )
+
+    feedback = FeedbackEngine(200).from_test(result)
+
+    assert feedback.failed_tests == ()
+
+
+@pytest.mark.parametrize(
+    "unsafe_node_id, known_secrets",
+    [
+        ("tests/test_" + "sk-" + "abcdefghijklmnop.py::test_x", ()),
+        ("tests/test_private_marker.py::test_x", ("private_marker",)),
+    ],
+)
+def test_feedback_drops_node_id_if_redaction_would_change_it(
+    unsafe_node_id: str, known_secrets: tuple[str, ...]
+) -> None:
+    result = _result(
+        stderr=f"FAILED {unsafe_node_id} - AssertionError",
+        failed_tests=(unsafe_node_id,),
+    )
+
+    feedback = FeedbackEngine(200, known_secrets=known_secrets).from_test(result)
+
+    assert feedback.failed_tests == ()
+
+
+@pytest.mark.parametrize(
     "secret_line",
     [
         "Authorization: Basic very-private-value",
@@ -373,7 +534,7 @@ def test_feedback_rejects_untrusted_failed_test_names() -> None:
         "secret: secret-private-value",
         "password=password-private-value",
         "token = token-private-value",
-        "plain sk-abcdefghijklmnopqrstuvwxyz0123456789",
+        "plain " + "sk-" + "abcdefghijklmnopqrstuvwxyz0123456789",
     ],
 )
 def test_feedback_redacts_common_secret_forms_before_truncating(secret_line: str) -> None:
@@ -384,6 +545,25 @@ def test_feedback_redacts_common_secret_forms_before_truncating(secret_line: str
     assert "private-value" not in feedback.output_tail
     assert "abcdefghijklmnopqrstuvwxyz" not in feedback.output_tail
     assert len(feedback.output_tail) <= 18
+
+
+@pytest.mark.parametrize(
+    "secret_line",
+    [
+        'OPENAI_API_KEY = "openai-private-value"',
+        "anthropic_api_key='anthropic-private-value'",
+        "DATABASE_PASSWORD = database-private-value",
+        "service_ToKeN: 'token-private-value'",
+        'nested_client_secret="client-private-value"',
+    ],
+)
+def test_feedback_redacts_sensitive_suffix_variable_assignments_before_truncating(
+    secret_line: str,
+) -> None:
+    feedback = FeedbackEngine(20).from_test(_result(stderr=f"prefix {secret_line} suffix"))
+
+    assert "private-value" not in feedback.output_tail
+    assert len(feedback.output_tail) <= 20
 
 
 def test_feedback_redacts_known_secrets_and_absolute_workspace_paths() -> None:
@@ -400,7 +580,7 @@ def test_feedback_redacts_known_secrets_and_absolute_workspace_paths() -> None:
 
 
 def test_feedback_from_policy_and_tool_never_copies_untrusted_details() -> None:
-    secret = "sk-untrusted-policy-tool-secret"
+    secret = "sk-" + "untrusted-policy-tool-secret"
     path = str(Path.cwd().resolve() / "private.py")
     engine = FeedbackEngine(500, known_secrets=(secret,))
     policy = PolicyDecision(PolicyLevel.DENY, secret, f"bad {path}", (secret, path))
@@ -418,6 +598,31 @@ def test_feedback_from_policy_and_tool_never_copies_untrusted_details() -> None:
         serialized = value.summary + value.output_tail + value.fingerprint
         assert secret not in serialized
         assert path not in serialized
+
+
+@pytest.mark.parametrize("level", [PolicyLevel.ALLOW, PolicyLevel.CONFIRM])
+def test_feedback_from_policy_rejects_non_deny_without_untrusted_details(
+    level: PolicyLevel,
+) -> None:
+    secret = "private-policy-detail"
+    decision = PolicyDecision(level, secret, secret, (secret,))
+
+    with pytest.raises(ValueError) as caught:
+        FeedbackEngine(100, known_secrets=(secret,)).from_policy(decision)
+
+    assert str(caught.value) == "policy feedback requires a denied decision"
+    assert secret not in str(caught.value)
+
+
+def test_feedback_from_tool_rejects_success_without_untrusted_details() -> None:
+    secret = "private-tool-detail"
+    observation = Observation(secret, True, secret, 0, secret)
+
+    with pytest.raises(ValueError) as caught:
+        FeedbackEngine(100, known_secrets=(secret,)).from_tool(observation)
+
+    assert str(caught.value) == "tool feedback requires a failed observation"
+    assert secret not in str(caught.value)
 
 
 def test_feedback_fingerprint_is_canonical_and_excludes_output_tail() -> None:
