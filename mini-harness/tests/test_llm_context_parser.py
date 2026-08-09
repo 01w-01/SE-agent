@@ -7,7 +7,15 @@ from types import SimpleNamespace
 import pytest
 
 from fbw_harness.context import ContextBudgetError, ContextBuilder, ContextInputError
-from fbw_harness.llm import LLMDecisionError, OpenAIClientFactory, OpenAICompatibleClient
+from fbw_harness.llm import (
+    MAX_ASSISTANT_CONTENT_CHARS,
+    MAX_TOOL_ARGUMENT_CHARS,
+    MAX_TOOL_CALLS,
+    MAX_TOOL_NAME_CHARS,
+    LLMDecisionError,
+    OpenAIClientFactory,
+    OpenAICompatibleClient,
+)
 from fbw_harness.mock_llm import MockLLMExhaustedError, ScriptedMockLLM
 from fbw_harness.models import (
     Action,
@@ -38,6 +46,14 @@ class _NoFullEncodeText(str):
 
     def __getitem__(self, key: object) -> str:
         return str(super().__getitem__(key))  # type: ignore[index]
+
+
+class _EncodeTrackingText(str):
+    encode_called: bool = False
+
+    def encode(self, *args: object, **kwargs: object) -> bytes:
+        self.encode_called = True
+        return super().encode(*args, **kwargs)  # type: ignore[arg-type]
 
 
 def _exception_graph_text(error: BaseException) -> str:
@@ -236,6 +252,50 @@ def test_parser_maps_lazy_property_exceptions_without_leaking_graph(boundary: st
     assert caught.value.__context__ is None
 
 
+def test_parser_accepts_valid_json_at_exact_argument_limit() -> None:
+    wrapper_chars = len('{"path":""}')
+    arguments = '{"path":"' + "x" * (MAX_TOOL_ARGUMENT_CHARS - wrapper_chars) + '"}'
+
+    action = ActionParser().parse(
+        RawDecision((RawToolCall(name="read_file", arguments=arguments),))
+    )
+
+    assert action.kind is ActionKind.READ_FILE
+    assert action.path is not None
+    assert len(action.path) == MAX_TOOL_ARGUMENT_CHARS - wrapper_chars
+
+
+def test_parser_rejects_argument_limit_plus_one_before_encoding() -> None:
+    arguments = _EncodeTrackingText("x" * (MAX_TOOL_ARGUMENT_CHARS + 1))
+
+    with pytest.raises(ActionParseError, match=r"^invalid action decision$") as caught:
+        ActionParser().parse(RawDecision((RawToolCall(name="read_file", arguments=arguments),)))
+
+    assert arguments.encode_called is False
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+
+
+def test_parser_rejects_overlong_name_before_accessing_argument_payload() -> None:
+    arguments = _EncodeTrackingText("{}")
+    name = "n" * (MAX_TOOL_NAME_CHARS + 1)
+
+    with pytest.raises(ActionParseError, match=r"^invalid action decision$"):
+        ActionParser().parse(RawDecision((RawToolCall(name=name, arguments=arguments),)))
+
+    assert arguments.encode_called is False
+
+
+def test_parser_rejects_more_than_maximum_tool_calls_with_fixed_error() -> None:
+    calls = tuple(RawToolCall("list_files", "{}") for _ in range(MAX_TOOL_CALLS + 1))
+
+    with pytest.raises(ActionParseError, match=r"^invalid action decision$") as caught:
+        ActionParser().parse(RawDecision(calls))
+
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+
+
 def test_action_tools_schema_matches_all_parser_actions_and_rejects_extra_fields() -> None:
     tools = json.loads(json.dumps(build_action_tools()))
     functions = {item["function"]["name"]: item["function"] for item in tools}
@@ -369,6 +429,76 @@ def test_llm_decide_folds_non_string_content_to_empty_string() -> None:
     )
 
     assert client.decide([], []).content == ""
+
+
+def test_llm_accepts_exact_tool_output_limits_and_sixteen_calls() -> None:
+    name = "n" * MAX_TOOL_NAME_CHARS
+    arguments = "a" * MAX_TOOL_ARGUMENT_CHARS
+    calls = [(name, arguments)] + [("list_files", "{}")] * (MAX_TOOL_CALLS - 1)
+    client = OpenAICompatibleClient(client=_FakeSDK([_sdk_response(*calls)]), model="model")
+
+    result = client.decide([], [])
+
+    assert len(result.tool_calls) == MAX_TOOL_CALLS
+    assert len(result.tool_calls[0].name) == MAX_TOOL_NAME_CHARS
+    assert len(result.tool_calls[0].arguments) == MAX_TOOL_ARGUMENT_CHARS
+
+
+def test_llm_rejects_seventeenth_tool_call_without_accessing_it() -> None:
+    access = {"bomb": False}
+
+    class BombCall:
+        @property
+        def function(self) -> object:
+            access["bomb"] = True
+            raise RuntimeError("seventeenth call must not be inspected")
+
+    safe_calls = [
+        SimpleNamespace(function=SimpleNamespace(name="list_files", arguments="{}"))
+        for _ in range(MAX_TOOL_CALLS)
+    ]
+    response = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(content="", tool_calls=[*safe_calls, BombCall()])
+            )
+        ]
+    )
+    sdk = _FakeSDK([response])
+
+    with pytest.raises(LLMDecisionError, match=r"^LLM decision failed$") as caught:
+        OpenAICompatibleClient(client=sdk, model="model").decide([], [])
+
+    assert access["bomb"] is False
+    assert len(sdk.chat.completions.calls) == 1
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+
+
+@pytest.mark.parametrize("field", ["name", "arguments"])
+def test_llm_rejects_tool_field_limit_plus_one(field: str) -> None:
+    name = "n" * (MAX_TOOL_NAME_CHARS + (field == "name"))
+    arguments = "a" * (MAX_TOOL_ARGUMENT_CHARS + (field == "arguments"))
+    sdk = _FakeSDK([_sdk_response((name, arguments))])
+
+    with pytest.raises(LLMDecisionError, match=r"^LLM decision failed$") as caught:
+        OpenAICompatibleClient(client=sdk, model="model").decide([], [])
+
+    assert len(sdk.chat.completions.calls) == 1
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+
+
+def test_llm_truncates_string_assistant_content_to_fixed_limit() -> None:
+    content = "c" * (MAX_ASSISTANT_CONTENT_CHARS + 1)
+    client = OpenAICompatibleClient(
+        client=_FakeSDK([_sdk_response(("list_files", "{}"), content=content)]),
+        model="model",
+    )
+
+    result = client.decide([], [])
+
+    assert result.content == "c" * MAX_ASSISTANT_CONTENT_CHARS
 
 
 @pytest.mark.parametrize(
