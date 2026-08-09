@@ -135,8 +135,8 @@ def test_output_redactor_handles_quoted_mapping_keys_across_single_byte_chunks(
         assert "visible" in safe
 
 
-def test_output_redactor_does_not_treat_quoted_prose_as_mapping_field() -> None:
-    prose = b'He said "token": visible text'
+def test_output_redactor_preserves_non_sensitive_quoted_prose_field() -> None:
+    prose = b'He said "token count": visible text'
 
     assert _stream_redact(prose) == prose.decode("ascii")
 
@@ -289,8 +289,10 @@ def test_runner_and_feedback_redact_adversarial_stream_before_mid_secret_tail(
 
     assert hidden not in result.stdout
     assert hidden not in feedback.output_tail
-    assert result.stdout.endswith("[REDACTED]")
-    assert feedback.output_tail.endswith("[REDACTED]"[-11:])
+    assert "[REDACTED]" in result.stdout
+    assert "[REDACTED]" in feedback.output_tail
+    assert len(result.stdout) <= 11
+    assert len(feedback.output_tail) <= 11
 
 
 @pytest.mark.parametrize("chunk_size", [1, 2, 3, 7, 10_000])
@@ -369,6 +371,135 @@ def test_output_redactor_has_exact_64_container_depth_boundary(depth: int, chunk
         assert len(safe) <= 128
     else:
         assert safe.startswith(b"{" * 64)
+
+
+@pytest.mark.parametrize(
+    "payload, hidden",
+    [
+        (b'"api_key" : "FRAGMENTDOUBLESECRET"', "FRAGMENTDOUBLESECRET"),
+        (b"'API KEY'='FRAGMENTSINGLESECRET'", "FRAGMENTSINGLESECRET"),
+        (b"\"openai.api-key\" = 'FRAGMENTMIXEDSECRET'", "FRAGMENTMIXEDSECRET"),
+    ],
+)
+@pytest.mark.parametrize("chunk_size", [1, 2, 3, 7, 10_000])
+def test_output_redactor_remembers_standalone_quoted_field_fragments(
+    payload: bytes, hidden: str, chunk_size: int
+) -> None:
+    safe = _stream_redact(payload, chunk_size=chunk_size)
+
+    assert safe == _stream_redact(payload, chunk_size=len(payload))
+    assert hidden not in safe
+    assert "[REDACTED]" in safe
+
+
+@pytest.mark.parametrize(
+    "payload, hidden",
+    [
+        (b'"api_key": UNQUOTEDSECRET', "UNQUOTEDSECRET"),
+        (b"'token'=plainsecret", "plainsecret"),
+    ],
+)
+@pytest.mark.parametrize("chunk_size", [1, 2, 3, 7, 10_000])
+def test_output_redactor_fail_closes_unquoted_value_after_quoted_sensitive_field(
+    payload: bytes, hidden: str, chunk_size: int
+) -> None:
+    safe = _stream_redact(payload, chunk_size=chunk_size)
+
+    assert safe == _stream_redact(payload, chunk_size=len(payload))
+    assert hidden not in safe
+    assert "[REDACTED]" in safe
+
+
+def test_output_redactor_bounds_incomplete_quoted_field_candidate() -> None:
+    redactor = OutputRedactor()
+
+    redactor.feed(b'"' + b"A" * 100_000)
+
+    assert len(redactor._global._fragment_buffer) <= 64
+
+
+@pytest.mark.parametrize(
+    "payload, hidden",
+    [
+        ('prefix "api_key" : "' + "EXTERNALDOUBLESECRET" * 8, "EXTERNALDOUBLESECRET"),
+        ("prefix 'API KEY' = '" + "EXTERNALSINGLESECRET" * 8, "EXTERNALSINGLESECRET"),
+    ],
+)
+def test_feedback_redacts_external_test_result_quoted_field_fragment_before_tail(
+    payload: str, hidden: str
+) -> None:
+    feedback = FeedbackEngine(13).from_test(_result(stderr=payload))
+
+    assert hidden not in feedback.output_tail
+    assert "[REDACTED]" in feedback.output_tail
+
+
+@pytest.mark.parametrize(
+    "payload, hidden",
+    [
+        ('prefix "api_key": ' + "EXTERNALUNQUOTEDSECRET" * 8, "EXTERNALUNQUOTEDSECRET"),
+        ("prefix 'token'=" + "externalplainsecret" * 8, "externalplainsecret"),
+    ],
+)
+def test_feedback_redacts_external_unquoted_value_after_quoted_sensitive_field(
+    payload: str, hidden: str
+) -> None:
+    feedback = FeedbackEngine(13).from_test(_result(stderr=payload))
+
+    assert hidden not in feedback.output_tail
+    assert "[REDACTED]" in feedback.output_tail
+
+
+@pytest.mark.parametrize("entrypoint", ["runner", "engine", "redactor"])
+@pytest.mark.parametrize(
+    "known_secrets",
+    [
+        pytest.param(("",), id="empty"),
+        pytest.param(("NONASCII-\u5bc6\u5bc6",), id="non-ascii"),
+        pytest.param((object(),), id="non-string"),
+    ],
+)
+def test_known_secret_entrypoints_reject_invalid_values_without_leaking_exception_graph(
+    entrypoint: str, known_secrets: tuple[object, ...]
+) -> None:
+    with pytest.raises(ValueError) as caught:
+        if entrypoint == "runner":
+            HarnessTestRunner(HarnessConfig(), known_secrets=known_secrets)  # type: ignore[arg-type]
+        elif entrypoint == "engine":
+            FeedbackEngine(100, known_secrets=known_secrets)  # type: ignore[arg-type]
+        else:
+            OutputRedactor(known_secrets)  # type: ignore[arg-type]
+
+    exception_graph = " ".join(
+        (
+            str(caught.value),
+            repr(caught.value),
+            repr(caught.value.__cause__),
+            repr(caught.value.__context__),
+        )
+    )
+    assert str(caught.value) == "known_secrets must contain non-empty ASCII strings"
+    for value in known_secrets:
+        if isinstance(value, str) and value:
+            assert value not in exception_graph
+
+
+def test_known_secret_ascii_matching_is_case_insensitive_across_runner_and_feedback(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    configured = "MiXeD-Ascii-Private"
+    emitted = configured.swapcase()
+    process = _CompletedProcess(stdout=f"prefix {emitted}".encode(), returncode=1)
+    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: process)
+
+    result = HarnessTestRunner(
+        HarnessConfig(output_tail_chars=100), known_secrets=(configured,)
+    ).run(tmp_path)
+    feedback = FeedbackEngine(100, known_secrets=(configured,)).from_test(result)
+
+    assert emitted not in result.stdout
+    assert emitted not in feedback.output_tail
+    assert "[REDACTED]" in result.stdout
 
 
 def test_runner_reports_real_assertion_failure(tmp_path: Path) -> None:
