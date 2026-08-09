@@ -1033,9 +1033,11 @@ format 和 `git diff --check` 均通过；review/fix round 1 clean。真实 Tool
 
 **Interfaces:**
 - Consumes: `HarnessConfig.pytest_args/pytest_timeout_seconds/output_tail_chars`、`TestResult`、`Feedback`。
-- Produces: `TestRunner.run(workspace) -> TestResult`、`FeedbackEngine.from_test/from_policy/from_tool`、`fingerprint(feedback) -> str`。
+- Produces: `TestRunner(config, *, known_secrets).run(workspace) -> TestResult`、`FeedbackEngine.from_test/from_policy/from_tool`、`fingerprint(feedback) -> str`。
 
-- [ ] **Step 1: 写通过、断言、收集、语法、导入、超时和脱敏失败测试**
+实现约束：`known_secrets` 必须是非空 ASCII 字符串组成的 tuple；Task 11 必须把同一个 tuple 同时注入 TestRunner 与 FeedbackEngine。pytest 双流以有界 reader 排空，原始 chunk 先提取固定诊断事实，再按 `mapping -> global -> sk-token -> known-secret` 流式脱敏，最后截取安全尾部。mapping 容器深度最多 64，超限 fail-closed；所有 reader、taskkill 和回收等待均有固定时限。
+
+- [x] **Step 1: 写通过、断言、收集、语法、导入、超时和脱敏失败测试**
 
 ```python
 def failed_result(output: str) -> TestResult:
@@ -1074,27 +1076,27 @@ def test_feedback_redacts_key_and_truncates_tail() -> None:
     assert len(feedback.output_tail) <= 40
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `uv run --project mini-harness pytest mini-harness/tests/test_testing_feedback.py -v`
 
 Expected: FAIL because runner and feedback engine are absent.
 
-- [ ] **Step 3: 实现固定子进程和 Windows 超时终止**
+- [x] **Step 3: 实现固定子进程和 Windows 超时终止**
 
 命令固定为 `[sys.executable, "-m", "pytest", *config.pytest_args]`，`cwd` 固定为工作区，不使用 shell。以新进程组启动；超时后在 Windows 使用 `taskkill /T /F /PID <pid>`，捕获 UTF-8 replacement stdout/stderr、exit code 和 duration。
 
-- [ ] **Step 4: 实现保守分类、摘要、脱敏和指纹**
+- [x] **Step 4: 实现保守分类、摘要、脱敏和指纹**
 
 分类优先级固定为 timeout、collection、syntax、import、assertion、unknown、pass；只在可靠时提取失败测试名。先脱敏 `Authorization`、Bearer、Key 模式和已知 CredentialStore 值，再截取尾部。指纹只由 kind、exit code、排序后的失败测试名、规范化摘要计算 SHA-256。
 
-- [ ] **Step 5: 运行真实临时 pytest 集成测试**
+- [x] **Step 5: 运行真实临时 pytest 集成测试**
 
 创建临时 Python 项目分别通过、断言失败和超时；断言 runner 不读取模型命令、不越过 cwd，反馈多次生成指纹相同。
 
 Run: `uv run --project mini-harness pytest mini-harness/tests/test_testing_feedback.py -v`
 
-- [ ] **Step 6: 全量测试并提交**
+- [x] **Step 6: 全量测试并提交**
 
 Run: `uv run --project mini-harness pytest -q`
 
