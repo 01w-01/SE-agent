@@ -44,14 +44,14 @@ class OpenAICompatibleClient:
             if failed:
                 if retry:
                     continue
-                raise LLMDecisionError(_DECISION_ERROR)
+                raise LLMDecisionError(_DECISION_ERROR) from None
 
             try:
                 return _to_raw_decision(response)
             except Exception:  # noqa: BLE001 - lazy SDK response fields are untrusted.
                 malformed = True
             if malformed:
-                raise LLMDecisionError(_DECISION_ERROR)
+                raise LLMDecisionError(_DECISION_ERROR) from None
         raise AssertionError("unreachable")
 
 
@@ -71,7 +71,7 @@ class OpenAIClientFactory:
         else:
             failed = False
         if failed:
-            raise LLMDecisionError(_DECISION_ERROR)
+            raise LLMDecisionError(_DECISION_ERROR) from None
         return OpenAICompatibleClient(
             client=client,
             model=model,
@@ -110,5 +110,8 @@ def _is_transient(error: Exception) -> bool:
         (TimeoutError, ConnectionError, APITimeoutError, APIConnectionError),
     ):
         return True
-    status_code = getattr(error, "status_code", None)
+    try:
+        status_code = getattr(error, "status_code", None)
+    except Exception:  # noqa: BLE001 - exception metadata is an untrusted SDK boundary.
+        return False
     return type(status_code) is int and (status_code == 429 or 500 <= status_code <= 599)
