@@ -4,7 +4,7 @@ import json
 from typing import NoReturn
 
 from .errors import ModelValidationError
-from .models import Action, ActionKind, RawDecision
+from .models import Action, ActionKind, RawDecision, RawToolCall
 
 _PARSE_ERROR = "invalid action decision"
 _FIELDS_BY_ACTION: dict[ActionKind, tuple[str, ...]] = {
@@ -32,9 +32,10 @@ def _tool_schema(kind: ActionKind, fields: tuple[str, ...]) -> dict[str, object]
     }
 
 
-ACTION_TOOLS: tuple[dict[str, object], ...] = tuple(
-    _tool_schema(kind, fields) for kind, fields in _FIELDS_BY_ACTION.items()
-)
+def build_action_tools() -> list[dict[str, object]]:
+    """Return a fresh schema graph so one caller cannot poison later decisions."""
+
+    return [_tool_schema(kind, fields) for kind, fields in _FIELDS_BY_ACTION.items()]
 
 
 class ActionParseError(Exception):
@@ -43,42 +44,43 @@ class ActionParseError(Exception):
 
 class ActionParser:
     def parse(self, decision: RawDecision) -> Action:
-        if not isinstance(decision, RawDecision) or len(decision.tool_calls) != 1:
-            raise ActionParseError(_PARSE_ERROR)
-        call = decision.tool_calls[0]
-        if not isinstance(call.name, str) or not isinstance(call.arguments, str):
-            raise ActionParseError(_PARSE_ERROR)
         try:
-            call.arguments.encode("utf-8", errors="strict")
-            arguments = json.loads(
-                call.arguments,
-                object_pairs_hook=_unique_object,
-                parse_constant=_reject_constant,
-            )
-        except (json.JSONDecodeError, TypeError, ValueError, UnicodeEncodeError):
-            arguments = None
-        if not isinstance(arguments, dict):
-            raise ActionParseError(_PARSE_ERROR)
-
-        try:
-            kind = ActionKind(call.name)
-        except (ValueError, TypeError):
-            kind = None
-        if kind is None:
-            raise ActionParseError(_PARSE_ERROR)
-
-        fields = _FIELDS_BY_ACTION[kind]
-        if set(arguments) != set(fields) or any(
-            not isinstance(arguments[field], str) for field in fields
-        ):
-            raise ActionParseError(_PARSE_ERROR)
-        try:
-            return Action(kind=kind, **arguments)
-        except (ModelValidationError, TypeError, ValueError):
+            return _parse_action(decision)
+        except Exception:  # noqa: BLE001 - the entire model decision object is untrusted.
             invalid = True
         if invalid:
-            raise ActionParseError(_PARSE_ERROR)
+            raise ActionParseError(_PARSE_ERROR) from None
         raise AssertionError("unreachable")
+
+
+def _parse_action(decision: object) -> Action:
+    if not isinstance(decision, RawDecision):
+        raise TypeError("decision type")
+    tool_calls = decision.tool_calls
+    if len(tool_calls) != 1:
+        raise ValueError("tool call count")
+    call = tool_calls[0]
+    if not isinstance(call, RawToolCall):
+        raise TypeError("tool call type")
+    name = call.name
+    raw_arguments = call.arguments
+    if not isinstance(name, str) or not isinstance(raw_arguments, str):
+        raise TypeError("tool call fields")
+    raw_arguments.encode("utf-8", errors="strict")
+    arguments = json.loads(
+        raw_arguments,
+        object_pairs_hook=_unique_object,
+        parse_constant=_reject_constant,
+    )
+    if not isinstance(arguments, dict):
+        raise TypeError("arguments type")
+    kind = ActionKind(name)
+    fields = _FIELDS_BY_ACTION[kind]
+    if set(arguments) != set(fields) or any(
+        not isinstance(arguments[field], str) for field in fields
+    ):
+        raise ModelValidationError("action fields")
+    return Action(kind=kind, **arguments)
 
 
 def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:

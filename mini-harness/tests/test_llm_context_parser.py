@@ -20,8 +20,41 @@ from fbw_harness.models import (
     RawToolCall,
     RunRequest,
 )
-from fbw_harness.parser import ACTION_TOOLS, ActionParseError, ActionParser
+from fbw_harness.parser import ActionParseError, ActionParser, build_action_tools
 from fbw_harness.workspace import FileSnapshot
+
+
+def _synthetic_api_key(label: str) -> str:
+    return "".join(("s", "k", "-", label))  # noqa: FLY002 - avoid tracked key literals.
+
+
+def _sha(character: str = "a") -> str:
+    return character * 64
+
+
+class _NoFullEncodeText(str):
+    def encode(self, *args: object, **kwargs: object) -> bytes:
+        raise AssertionError("the complete optional text must not be encoded")
+
+    def __getitem__(self, key: object) -> str:
+        return str(super().__getitem__(key))  # type: ignore[index]
+
+
+def _exception_graph_text(error: BaseException) -> str:
+    seen: set[int] = set()
+    pending: list[BaseException] = [error]
+    parts: list[str] = []
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        parts.append(repr(current))
+        if current.__cause__ is not None:
+            pending.append(current.__cause__)
+        if current.__context__ is not None:
+            pending.append(current.__context__)
+    return " ".join(parts)
 
 
 def test_parser_converts_list_files_tool_call_to_action() -> None:
@@ -150,7 +183,7 @@ def test_parser_rejects_duplicate_keys_and_non_finite_json(arguments: str) -> No
 
 
 def test_parser_error_does_not_leak_payload_or_chain_underlying_exception() -> None:
-    secret = "sk-private-parser-payload"
+    secret = _synthetic_api_key("private-parser-payload")
 
     with pytest.raises(ActionParseError) as caught:
         ActionParser().parse(
@@ -165,8 +198,46 @@ def test_parser_error_does_not_leak_payload_or_chain_underlying_exception() -> N
     assert caught.value.__context__ is None
 
 
+def test_parser_rejects_non_raw_tool_call_even_if_it_has_matching_attributes() -> None:
+    impostor = SimpleNamespace(name="list_files", arguments="{}")
+    decision = RawDecision(tool_calls=(impostor,))  # type: ignore[arg-type]
+
+    with pytest.raises(ActionParseError, match=r"^invalid action decision$"):
+        ActionParser().parse(decision)
+
+
+@pytest.mark.parametrize("boundary", ["decision", "call"])
+def test_parser_maps_lazy_property_exceptions_without_leaking_graph(boundary: str) -> None:
+    secret = f"private-{boundary}-property-detail"
+
+    if boundary == "decision":
+
+        class ExplodingDecision(RawDecision):
+            @property
+            def tool_calls(self) -> tuple[RawToolCall, ...]:  # type: ignore[override]
+                raise RuntimeError(secret)
+
+        decision = object.__new__(ExplodingDecision)
+    else:
+
+        class ExplodingCall(RawToolCall):
+            @property
+            def name(self) -> str:  # type: ignore[override]
+                raise RuntimeError(secret)
+
+        call = object.__new__(ExplodingCall)
+        decision = RawDecision(tool_calls=(call,))
+
+    with pytest.raises(ActionParseError, match=r"^invalid action decision$") as caught:
+        ActionParser().parse(decision)
+
+    assert secret not in _exception_graph_text(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+
+
 def test_action_tools_schema_matches_all_parser_actions_and_rejects_extra_fields() -> None:
-    tools = json.loads(json.dumps(ACTION_TOOLS))
+    tools = json.loads(json.dumps(build_action_tools()))
     functions = {item["function"]["name"]: item["function"] for item in tools}
 
     assert tuple(functions) == tuple(kind.value for kind in ActionKind)
@@ -201,6 +272,23 @@ def test_action_tools_schema_matches_all_parser_actions_and_rejects_extra_fields
         for function in functions.values()
         for schema in function["parameters"]["properties"].values()
     )
+
+
+def test_action_tools_are_fresh_and_deep_mutation_cannot_poison_future_schema() -> None:
+    first = build_action_tools()
+    first[0]["function"]["name"] = "poisoned"  # type: ignore[index]
+    first[1]["function"]["parameters"]["properties"]["path"]["type"] = "number"  # type: ignore[index]
+
+    second = build_action_tools()
+
+    assert second[0]["function"]["name"] == "list_files"  # type: ignore[index]
+    assert (
+        second[1]["function"]["parameters"]["properties"]["path"]  # type: ignore[index]
+        == {"type": "string"}
+    )
+    assert ActionParser().parse(
+        RawDecision((RawToolCall("read_file", '{"path":"app.py"}'),))
+    ) == Action(ActionKind.READ_FILE, path="app.py")
 
 
 class _HTTPFailure(Exception):
@@ -372,9 +460,29 @@ def test_llm_decide_maps_response_property_exceptions_without_leaking_detail() -
     assert len(sdk.chat.completions.calls) == 1
 
 
+def test_llm_treats_exploding_status_property_as_non_transient_and_redacts_graph() -> None:
+    secret = "private-status-property-detail"
+
+    class ExplodingStatusError(Exception):
+        @property
+        def status_code(self) -> int:
+            raise RuntimeError(secret)
+
+    sdk = _FakeSDK([ExplodingStatusError("private-sdk-detail")])
+
+    with pytest.raises(LLMDecisionError, match=r"^LLM decision failed$") as caught:
+        OpenAICompatibleClient(client=sdk, model="model").decide([], [])
+
+    assert len(sdk.chat.completions.calls) == 1
+    assert secret not in _exception_graph_text(caught.value)
+    assert "private-sdk-detail" not in _exception_graph_text(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+
+
 def test_llm_error_does_not_leak_key_url_response_or_exception_detail() -> None:
     secrets = (
-        "sk-private-llm-key",
+        _synthetic_api_key("private-llm-key"),
         "https://private.example/v1",
         "private response body",
         "private transport detail",
@@ -402,7 +510,7 @@ def test_openai_factory_uses_no_sdk_retries_and_wrapper_does_not_store_key(
         return sdk
 
     monkeypatch.setattr("fbw_harness.llm.OpenAI", fake_openai)
-    key = "sk-private-factory-key"
+    key = _synthetic_api_key("private-factory-key")
 
     client = OpenAIClientFactory().create(
         base_url="https://school.example/v1", model="model", api_key=key
@@ -495,8 +603,8 @@ def test_context_orders_sections_and_serializes_only_declared_fields() -> None:
         updated_at="2026-08-09T00:00:00Z",
     )
     files = [
-        FileSnapshot("src/z.py", "z = 1", "sha-z"),
-        FileSnapshot("src/a.py", "a = 1", "sha-a"),
+        FileSnapshot("src/z.py", "z = 1", _sha("f")),
+        FileSnapshot("src/a.py", "a = 1", _sha("a")),
     ]
     observations = [
         Observation("read_file", True, "read a", output_tail="ok"),
@@ -576,8 +684,8 @@ def test_context_normalizes_sets_order_and_unicode_stably() -> None:
         "feedback": feedback,
         "memory": None,
         "files": [
-            FileSnapshot("z.py", "最后", "z"),
-            FileSnapshot("a.py", "最先", "a"),
+            FileSnapshot("z.py", "最后", _sha("f")),
+            FileSnapshot("a.py", "最先", _sha("a")),
         ],
     }
 
@@ -599,7 +707,11 @@ def test_context_remains_within_budget_and_preserves_latest_feedback_last() -> N
         for index in range(20)
     ]
     files = [
-        FileSnapshot(f"src/{index}.py", f"FILE-{index}-" + "F" * 3_000, f"sha-{index}")
+        FileSnapshot(
+            f"src/{index}.py",
+            f"FILE-{index}-" + "F" * 3_000,
+            f"{index:064x}",
+        )
         for index in range(5)
     ]
 
@@ -626,7 +738,7 @@ def test_context_removes_oldest_observation_body_before_newer_body() -> None:
         Observation("test", False, "new", output_tail="NEWEST-BODY-" + "y" * 700),
     ]
 
-    messages = ContextBuilder(2_300).build(
+    messages = ContextBuilder(2_100).build(
         request=_request(),
         observations=observations,
         feedback=_feedback(),
@@ -637,6 +749,25 @@ def test_context_removes_oldest_observation_body_before_newer_body() -> None:
 
     assert "OLDEST-BODY" not in serialized
     assert "NEWEST-BODY" in serialized
+
+
+def test_context_removes_oldest_file_after_its_body_before_touching_newer_file() -> None:
+    files = [
+        FileSnapshot("a.py", "OLDEST-FILE-" + "x" * 700, _sha("a")),
+        FileSnapshot("b.py", "NEWEST-FILE-" + "y" * 700, _sha("b")),
+    ]
+
+    messages = ContextBuilder(2_100).build(
+        request=_request(),
+        observations=[],
+        feedback=_feedback(),
+        memory=None,
+        files=files,
+    )
+    serialized = json.dumps(messages, ensure_ascii=False, sort_keys=True)
+
+    assert "OLDEST-FILE" not in serialized
+    assert "NEWEST-FILE" in serialized
 
 
 @pytest.mark.parametrize("max_chars", [1, 10, 100])
@@ -690,21 +821,22 @@ def test_context_rejects_unsafe_file_snapshot_paths(path: str) -> None:
             observations=[],
             feedback=None,
             memory=None,
-            files=[FileSnapshot(path, "text", "sha")],
+            files=[FileSnapshot(path, "text", _sha())],
         )
 
 
 def test_context_redacts_secrets_urls_and_absolute_paths_from_declared_text() -> None:
+    token = _synthetic_api_key("abcdefghijklmnopqrstuvwxyz123456")
     sensitive = (
         "PRIVATE_API_VALUE",
-        "sk-abcdefghijklmnopqrstuvwxyz123456",
+        token,
         "https://secret.example/v1",
         r"C:\Users\secret\project\app.py",
         "/home/secret/project/app.py",
     )
     output = (
         'api_key="PRIVATE_API_VALUE" '
-        "sk-abcdefghijklmnopqrstuvwxyz123456 "
+        f"{token} "
         "https://secret.example/v1 "
         r"C:\Users\secret\project\app.py "
         "/home/secret/project/app.py"
@@ -715,7 +847,7 @@ def test_context_redacts_secrets_urls_and_absolute_paths_from_declared_text() ->
         observations=[Observation("test", False, output, output_tail=output)],
         feedback=_feedback(output),
         memory=ProjectMemory(project_notes=output),
-        files=[FileSnapshot("app.py", output, "sha")],
+        files=[FileSnapshot("app.py", output, _sha())],
     )
     serialized = json.dumps(messages, ensure_ascii=False, sort_keys=True)
 
@@ -731,13 +863,13 @@ def test_context_ignores_extra_runtime_attributes_instead_of_serializing_object_
         project_notes="notes",
         last_success_summary="ok",
         updated_at="now",
-        api_key="sk-extra-memory-secret",
+        api_key=_synthetic_api_key("extra-memory-secret"),
         headers={"Authorization": "secret"},
     )
     file = SimpleNamespace(
         path="app.py",
         text="safe",
-        sha256="sha",
+        sha256=_sha(),
         recovery_path=r"C:\private\recovery",
         base_url="https://private.example/v1",
     )
@@ -747,7 +879,7 @@ def test_context_ignores_extra_runtime_attributes_instead_of_serializing_object_
     )
     serialized = json.dumps(messages, ensure_ascii=False, sort_keys=True)
 
-    assert "sk-extra-memory-secret" not in serialized
+    assert _synthetic_api_key("extra-memory-secret") not in serialized
     assert "Authorization" not in serialized
     assert "recovery_path" not in serialized
     assert "https://private.example/v1" not in serialized
@@ -762,10 +894,173 @@ def test_context_bounds_single_huge_optional_file_and_observation() -> None:
         observations=[Observation("test", False, huge_observation, output_tail=huge_observation)],
         feedback=_feedback(),
         memory=None,
-        files=[FileSnapshot("huge.py", huge_file, "sha")],
+        files=[FileSnapshot("huge.py", huge_file, _sha())],
     )
     serialized = json.dumps(messages, ensure_ascii=False, sort_keys=True)
 
     assert _serialized_length(messages) <= 20_000
     assert "-FILE-END" not in serialized
     assert "-OBS-END" not in serialized
+
+
+@pytest.mark.parametrize("boundary", ["task", "feedback"])
+def test_context_rejects_huge_mandatory_text_before_encoding(boundary: str) -> None:
+    huge = _NoFullEncodeText("x" * 20_000)
+    request = _request(huge if boundary == "task" else "normal")
+    feedback = _feedback(huge if boundary == "feedback" else "normal")
+
+    with pytest.raises(ContextBudgetError, match=r"^context budget exceeded$"):
+        ContextBuilder(200_000).build(
+            request=request,
+            observations=[],
+            feedback=feedback,
+            memory=None,
+            files=[],
+        )
+
+
+def test_context_limits_optional_text_before_encoding_full_values() -> None:
+    huge = _NoFullEncodeText("x" * 100_000)
+
+    messages = ContextBuilder(50_000).build(
+        request=_request(),
+        observations=[Observation(huge, False, huge, output_tail=huge)],
+        feedback=_feedback(),
+        memory=ProjectMemory(
+            project_notes=huge,
+            last_success_summary=huge,
+            updated_at=huge,
+        ),
+        files=[FileSnapshot("large.py", huge, _sha())],
+    )
+    sections = {section["section"]: section for section in _sections(messages)}
+
+    assert len(sections["project_memory"]["memory"]["project_notes"]) <= 4_000
+    assert len(sections["project_memory"]["memory"]["last_success_summary"]) <= 4_000
+    assert len(sections["project_memory"]["memory"]["updated_at"]) <= 4_000
+    assert len(sections["files"]["files"][0]["text"]) <= 8_000
+    observation = sections["observations"]["observations"][0]
+    assert len(observation["kind"]) <= 2_000
+    assert len(observation["summary"]) <= 2_000
+    assert len(observation["output_tail"]) <= 4_000
+
+
+@pytest.mark.parametrize("collection", ["files", "observations", "failed_tests"])
+def test_context_rejects_collection_item_101_with_fixed_input_error(collection: str) -> None:
+    files: object = []
+    observations: object = []
+    feedback = _feedback()
+    if collection == "files":
+        files = [FileSnapshot(f"{index}.py", "x", _sha()) for index in range(101)]
+    elif collection == "observations":
+        observations = [Observation("test", False, str(index)) for index in range(101)]
+    else:
+        feedback = Feedback(
+            kind=FeedbackKind.ASSERTION_FAILURE,
+            passed=False,
+            exit_code=1,
+            summary="failed",
+            failed_tests=tuple(f"tests/t.py::test_{index}" for index in range(101)),
+            output_tail="failed",
+            fingerprint="fp",
+        )
+
+    with pytest.raises(ContextInputError, match=r"^invalid context input$"):
+        ContextBuilder(200_000).build(
+            request=_request(),
+            observations=observations,  # type: ignore[arg-type]
+            feedback=feedback,
+            memory=None,
+            files=files,  # type: ignore[arg-type]
+        )
+
+
+def test_context_accepts_512_char_path_and_normalizes_uppercase_sha256() -> None:
+    path = "a" * 509 + ".py"
+
+    messages = ContextBuilder(20_000).build(
+        request=_request(),
+        observations=[],
+        feedback=None,
+        memory=None,
+        files=[FileSnapshot(path, "text", _sha("A"))],
+    )
+
+    file_data = _sections(messages)[-1]["files"][0]
+    assert file_data == {"path": path, "text": "text", "sha256": _sha("a")}
+
+
+@pytest.mark.parametrize(
+    ("path", "sha256"),
+    [
+        ("a" * 510 + ".py", _sha()),
+        ("app.py", "a" * 63),
+        ("app.py", "g" * 64),
+    ],
+)
+def test_context_rejects_overlong_path_and_invalid_sha256(path: str, sha256: str) -> None:
+    with pytest.raises(ContextInputError):
+        ContextBuilder(20_000).build(
+            request=_request(),
+            observations=[],
+            feedback=None,
+            memory=None,
+            files=[FileSnapshot(path, "text", sha256)],
+        )
+
+
+@pytest.mark.parametrize(
+    "boundary",
+    [
+        "request",
+        "memory",
+        "file_item",
+        "observation_item",
+        "feedback",
+        "files_sequence",
+        "observations_sequence",
+    ],
+)
+def test_context_maps_lazy_input_exceptions_to_fixed_unchained_error(boundary: str) -> None:
+    secret = f"private-{boundary}-lazy-detail"
+
+    class ExplodingObject:
+        def __getattr__(self, _name: str) -> object:
+            raise RuntimeError(secret)
+
+    class ExplodingSequence:
+        def __iter__(self) -> object:
+            raise RuntimeError(secret)
+
+    request: object = _request()
+    memory: object = None
+    files: object = []
+    observations: object = []
+    feedback: object = _feedback()
+    if boundary == "request":
+        request = ExplodingObject()
+    elif boundary == "memory":
+        memory = ExplodingObject()
+    elif boundary == "file_item":
+        files = [ExplodingObject()]
+    elif boundary == "observation_item":
+        observations = [ExplodingObject()]
+    elif boundary == "feedback":
+        feedback = ExplodingObject()
+    elif boundary == "files_sequence":
+        files = ExplodingSequence()
+    else:
+        observations = ExplodingSequence()
+
+    with pytest.raises(ContextInputError, match=r"^invalid context input$") as caught:
+        ContextBuilder(20_000).build(
+            request=request,  # type: ignore[arg-type]
+            observations=observations,  # type: ignore[arg-type]
+            feedback=feedback,  # type: ignore[arg-type]
+            memory=memory,  # type: ignore[arg-type]
+            files=files,  # type: ignore[arg-type]
+        )
+
+    assert secret not in _exception_graph_text(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None

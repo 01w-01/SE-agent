@@ -18,6 +18,12 @@ _MAX_MEMORY_TEXT_CHARS = 4_000
 _MAX_FILE_TEXT_CHARS = 8_000
 _MAX_OBSERVATION_SUMMARY_CHARS = 2_000
 _MAX_OBSERVATION_OUTPUT_CHARS = 4_000
+_MAX_FILES = 100
+_MAX_OBSERVATIONS = 100
+_MAX_FAILED_TESTS = 100
+_MAX_PATH_CHARS = 512
+_REDACTION_LOOKAHEAD_CHARS = 256
+_SHA256_PATTERN = re.compile(r"[0-9a-fA-F]{64}\Z")
 _URL_PATTERN = re.compile(r"(?i)\bhttps?://[^\s\"'<>]+")
 _WINDOWS_PATH_PATTERN = re.compile(
     r"(?i)(?<![A-Za-z0-9_])[A-Z]:[\\/](?:[^\\/\r\n:]+[\\/])*[^\\/\r\n:]*"
@@ -56,6 +62,18 @@ class ContextInputError(ValueError):
     """A context-only input is not safe to serialize."""
 
 
+class _BudgetViolation(Exception):
+    pass
+
+
+class _InputViolation(Exception):
+    pass
+
+
+class _PathViolation(_InputViolation):
+    pass
+
+
 class ContextBuilder:
     def __init__(self, max_chars: int) -> None:
         if type(max_chars) is not int or max_chars <= 0:
@@ -71,10 +89,36 @@ class ContextBuilder:
         memory: ProjectMemory | None,
         files: Sequence[FileSnapshot],
     ) -> list[dict[str, object]]:
-        task = _text_field(request.task)
-        if len(task) > _MAX_TASK_CHARS:
-            raise ContextBudgetError(_BUDGET_ERROR)
+        try:
+            return self._build(
+                request=request,
+                observations=observations,
+                feedback=feedback,
+                memory=memory,
+                files=files,
+            )
+        except _BudgetViolation:
+            failure = "budget"
+        except _PathViolation:
+            failure = "path"
+        except Exception:  # noqa: BLE001 - every supplied object is an untrusted boundary.
+            failure = "input"
+        if failure == "budget":
+            raise ContextBudgetError(_BUDGET_ERROR) from None
+        if failure == "path":
+            raise ContextInputError(_FILE_PATH_ERROR) from None
+        raise ContextInputError(_INPUT_ERROR) from None
 
+    def _build(
+        self,
+        *,
+        request: RunRequest,
+        observations: Sequence[Observation],
+        feedback: Feedback | None,
+        memory: ProjectMemory | None,
+        files: Sequence[FileSnapshot],
+    ) -> list[dict[str, object]]:
+        task = _required_text(request.task, _MAX_TASK_CHARS)
         task_section = {
             "section": "task",
             "task": task,
@@ -84,8 +128,6 @@ class ContextBuilder:
         file_items = _file_items(files)
         observation_items = _observation_items(observations)
         feedback_section = _feedback_section(feedback)
-        if feedback_section is not None and len(_encode(feedback_section)) > _MAX_FEEDBACK_CHARS:
-            raise ContextBudgetError(_BUDGET_ERROR)
 
         while True:
             messages = _assemble_messages(
@@ -97,20 +139,24 @@ class ContextBuilder:
             )
             if _serialized_length(messages) <= self._max_chars:
                 return messages
-            if _remove_oldest_observation_body(observation_items):
-                continue
             if observation_items:
-                observation_items.pop(0)
-                continue
-            if _remove_oldest_file_body(file_items):
+                oldest_observation = observation_items[0]
+                if oldest_observation["output_tail"]:
+                    oldest_observation["output_tail"] = ""
+                else:
+                    observation_items.pop(0)
                 continue
             if file_items:
-                file_items.pop(0)
+                oldest_file = file_items[0]
+                if oldest_file["text"]:
+                    oldest_file["text"] = ""
+                else:
+                    file_items.pop(0)
                 continue
             if memory_section is not None:
                 memory_section = None
                 continue
-            raise ContextBudgetError(_BUDGET_ERROR)
+            raise _BudgetViolation
 
 
 def _assemble_messages(
@@ -140,42 +186,31 @@ def _assemble_messages(
 def _memory_section(memory: ProjectMemory | None) -> dict[str, object] | None:
     if memory is None:
         return None
-    try:
-        version = memory.version
-        project_notes = memory.project_notes
-        last_success_summary = memory.last_success_summary
-        updated_at = memory.updated_at
-    except AttributeError:
-        invalid = True
-    else:
-        invalid = False
-    if invalid or type(version) is not int:
-        raise ContextInputError(_INPUT_ERROR)
+    version = memory.version
+    if type(version) is not int:
+        raise _InputViolation
     return {
         "section": "project_memory",
         "memory": {
             "version": version,
-            "project_notes": _bounded_text(project_notes, _MAX_MEMORY_TEXT_CHARS),
-            "last_success_summary": _bounded_text(last_success_summary, _MAX_MEMORY_TEXT_CHARS),
-            "updated_at": _bounded_text(updated_at, _MAX_MEMORY_TEXT_CHARS),
+            "project_notes": _bounded_text(memory.project_notes, _MAX_MEMORY_TEXT_CHARS),
+            "last_success_summary": _bounded_text(
+                memory.last_success_summary, _MAX_MEMORY_TEXT_CHARS
+            ),
+            "updated_at": _bounded_text(memory.updated_at, _MAX_MEMORY_TEXT_CHARS),
         },
     }
 
 
 def _file_items(files: Sequence[FileSnapshot]) -> list[dict[str, object]]:
     items: list[dict[str, object]] = []
-    for snapshot in files:
-        try:
-            path = _safe_relative_path(snapshot.path)
-            text = _bounded_text(snapshot.text, _MAX_FILE_TEXT_CHARS)
-            sha256 = _text_field(snapshot.sha256)
-        except AttributeError:
-            invalid = True
-        else:
-            invalid = False
-        if invalid:
-            raise ContextInputError(_INPUT_ERROR)
-        items.append({"path": path, "text": text, "sha256": sha256})
+    for snapshot in _bounded_items(files, _MAX_FILES):
+        path = _safe_relative_path(snapshot.path)
+        text = _bounded_text(snapshot.text, _MAX_FILE_TEXT_CHARS)
+        sha256 = snapshot.sha256
+        if not isinstance(sha256, str) or _SHA256_PATTERN.fullmatch(sha256) is None:
+            raise _InputViolation
+        items.append({"path": path, "text": text, "sha256": sha256.lower()})
     return sorted(
         items,
         key=lambda item: (
@@ -189,30 +224,20 @@ def _file_items(files: Sequence[FileSnapshot]) -> list[dict[str, object]]:
 
 def _observation_items(observations: Sequence[Observation]) -> list[dict[str, object]]:
     items: list[dict[str, object]] = []
-    for observation in observations:
-        try:
-            kind = _bounded_text(observation.kind, _MAX_OBSERVATION_SUMMARY_CHARS)
-            success = observation.success
-            summary = _bounded_text(observation.summary, _MAX_OBSERVATION_SUMMARY_CHARS)
-            exit_code = observation.exit_code
-            output_tail = _bounded_text(observation.output_tail, _MAX_OBSERVATION_OUTPUT_CHARS)
-        except AttributeError:
-            invalid = True
-        else:
-            invalid = False
-        if (
-            invalid
-            or type(success) is not bool
-            or (exit_code is not None and type(exit_code) is not int)
-        ):
-            raise ContextInputError(_INPUT_ERROR)
+    for observation in _bounded_items(observations, _MAX_OBSERVATIONS):
+        success = observation.success
+        exit_code = observation.exit_code
+        if type(success) is not bool or (exit_code is not None and type(exit_code) is not int):
+            raise _InputViolation
         items.append(
             {
-                "kind": kind,
+                "kind": _bounded_text(observation.kind, _MAX_OBSERVATION_SUMMARY_CHARS),
                 "success": success,
-                "summary": summary,
+                "summary": _bounded_text(observation.summary, _MAX_OBSERVATION_SUMMARY_CHARS),
                 "exit_code": exit_code,
-                "output_tail": output_tail,
+                "output_tail": _bounded_text(
+                    observation.output_tail, _MAX_OBSERVATION_OUTPUT_CHARS
+                ),
             }
         )
     return items
@@ -221,79 +246,94 @@ def _observation_items(observations: Sequence[Observation]) -> list[dict[str, ob
 def _feedback_section(feedback: Feedback | None) -> dict[str, object] | None:
     if feedback is None:
         return None
-    try:
-        kind = feedback.kind.value
-        passed = feedback.passed
-        exit_code = feedback.exit_code
-        summary = _text_field(feedback.summary)
-        failed_tests = sorted({_text_field(item) for item in feedback.failed_tests})
-        fingerprint = _text_field(feedback.fingerprint)
-        output_tail = _text_field(feedback.output_tail)
-    except (AttributeError, TypeError):
-        invalid = True
-    else:
-        invalid = False
-    if (
-        invalid
-        or (passed is not None and type(passed) is not bool)
-        or (exit_code is not None and type(exit_code) is not int)
-    ):
-        raise ContextInputError(_INPUT_ERROR)
-    return {
+    kind = feedback.kind.value
+    passed = feedback.passed
+    exit_code = feedback.exit_code
+    summary = feedback.summary
+    fingerprint = feedback.fingerprint
+    output_tail = feedback.output_tail
+    failed_tests = _bounded_items(feedback.failed_tests, _MAX_FAILED_TESTS)
+    if not isinstance(kind, str) or (passed is not None and type(passed) is not bool):
+        raise _InputViolation
+    if exit_code is not None and type(exit_code) is not int:
+        raise _InputViolation
+    raw_texts = (summary, fingerprint, output_tail, *failed_tests)
+    if any(not isinstance(value, str) for value in raw_texts):
+        raise _InputViolation
+    if sum(len(value) for value in raw_texts) > _MAX_FEEDBACK_CHARS:
+        raise _BudgetViolation
+
+    section = {
         "section": "latest_feedback",
         "feedback": {
             "kind": kind,
             "passed": passed,
             "exit_code": exit_code,
-            "summary": summary,
-            "failed_tests": failed_tests,
-            "fingerprint": fingerprint,
-            "output_tail": output_tail,
+            "summary": _text_field(summary),
+            "failed_tests": sorted({_text_field(item) for item in failed_tests}),
+            "fingerprint": _text_field(fingerprint),
+            "output_tail": _text_field(output_tail),
         },
     }
+    if len(_encode(section)) > _MAX_FEEDBACK_CHARS:
+        raise _BudgetViolation
+    return section
 
 
-def _remove_oldest_observation_body(items: list[dict[str, object]]) -> bool:
-    for item in items:
-        if item["output_tail"]:
-            item["output_tail"] = ""
-            return True
-    return False
-
-
-def _remove_oldest_file_body(items: list[dict[str, object]]) -> bool:
-    for item in items:
-        if item["text"]:
-            item["text"] = ""
-            return True
-    return False
+def _bounded_items(values: object, limit: int) -> tuple[object, ...]:
+    if isinstance(values, (str, bytes, bytearray)):
+        raise _InputViolation
+    iterator = iter(values)  # type: ignore[arg-type]
+    items: list[object] = []
+    for _index in range(limit + 1):
+        try:
+            item = next(iterator)
+        except StopIteration:
+            return tuple(items)
+        if len(items) == limit:
+            raise _InputViolation
+        items.append(item)
+    raise AssertionError("unreachable")
 
 
 def _safe_relative_path(value: object) -> str:
     if not isinstance(value, str) or not value or "\x00" in value:
-        raise ContextInputError(_FILE_PATH_ERROR)
+        raise _PathViolation
+    if len(value) > _MAX_PATH_CHARS:
+        raise _PathViolation
     normalized = value.replace("\\", "/")
     windows = PureWindowsPath(value)
     if windows.drive or windows.is_absolute() or normalized.startswith("/"):
-        raise ContextInputError(_FILE_PATH_ERROR)
+        raise _PathViolation
     raw_parts = normalized.split("/")
     if any(part in {"", ".", ".."} for part in raw_parts):
-        raise ContextInputError(_FILE_PATH_ERROR)
+        raise _PathViolation
     parts = PurePosixPath(normalized).parts
     if not parts:
-        raise ContextInputError(_FILE_PATH_ERROR)
+        raise _PathViolation
     if any(":" in part or any(ord(character) < 32 for character in part) for part in parts):
-        raise ContextInputError(_FILE_PATH_ERROR)
+        raise _PathViolation
     return "/".join(parts)
 
 
-def _bounded_text(value: object, limit: int) -> str:
-    return _text_field(value)[:limit]
-
-
-def _text_field(value: object) -> str:
+def _required_text(value: object, limit: int) -> str:
     if not isinstance(value, str):
-        raise ContextInputError(_INPUT_ERROR)
+        raise _InputViolation
+    if len(value) > limit:
+        raise _BudgetViolation
+    return _text_field(value)
+
+
+def _bounded_text(value: object, limit: int) -> str:
+    if not isinstance(value, str):
+        raise _InputViolation
+    prefix = value[: limit + _REDACTION_LOOKAHEAD_CHARS]
+    if not isinstance(prefix, str) or len(prefix) > limit + _REDACTION_LOOKAHEAD_CHARS:
+        raise _InputViolation
+    return _text_field(prefix)[:limit]
+
+
+def _text_field(value: str) -> str:
     payload = value.encode("utf-8", errors="replace")
     redactor = OutputRedactor()
     safe = (redactor.feed(payload) + redactor.finish()).decode("utf-8", errors="replace")
