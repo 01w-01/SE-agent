@@ -358,6 +358,85 @@ def test_runner_preserves_fixed_early_diagnostic_fact_with_bounded_output(
     assert early_diagnostic.decode("ascii") not in result.stdout
 
 
+def test_runner_detects_stream_start_failed_across_three_byte_chunks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    process = _CompletedProcess(
+        stdout=b"FAILED tests/test_early.py::test_x - assert 1 == 2" + b"N" * 10_000,
+        returncode=1,
+    )
+    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: process)
+
+    result = HarnessTestRunner(HarnessConfig(output_tail_chars=3)).run(tmp_path)
+
+    assert FeedbackEngine(3).from_test(result).kind is FeedbackKind.ASSERTION_FAILURE
+
+
+@pytest.mark.parametrize(
+    "prefix, secret_byte",
+    [
+        (b"Authorization: Bearer ", b"A"),
+        (b"Bearer ", b"B"),
+        (b'OPENAI_API_KEY="', b"C"),
+        (b"plain " + b"s" + b"k-", b"D"),
+    ],
+)
+def test_runner_redacts_generic_secret_stream_before_bounded_tail(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    prefix: bytes,
+    secret_byte: bytes,
+) -> None:
+    sensitive_suffix = secret_byte * 5
+    process = _CompletedProcess(
+        stdout=prefix + secret_byte * 100_000,
+        returncode=1,
+    )
+    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: process)
+
+    result = HarnessTestRunner(HarnessConfig(output_tail_chars=5)).run(tmp_path)
+    feedback = FeedbackEngine(5).from_test(result)
+
+    assert len(result.stdout) <= 5
+    assert sensitive_suffix.decode("ascii") not in result.stdout
+    assert sensitive_suffix.decode("ascii") not in feedback.output_tail
+
+
+def test_runner_redacts_known_secret_across_chunks_before_bounded_tail(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    known_secret = "known-" + "K" * 80
+    sensitive_suffix = "K" * 4
+    process = _CompletedProcess(
+        stdout=b"prefix " + known_secret.encode("utf-8"),
+        returncode=1,
+    )
+    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: process)
+
+    result = HarnessTestRunner(
+        HarnessConfig(output_tail_chars=4), known_secrets=(known_secret,)
+    ).run(tmp_path)
+    feedback = FeedbackEngine(4, known_secrets=(known_secret,)).from_test(result)
+
+    assert len(result.stdout) <= 4
+    assert known_secret not in result.stdout
+    assert sensitive_suffix not in result.stdout
+    assert sensitive_suffix not in feedback.output_tail
+
+
+def test_feedback_strips_internal_marker_before_multibyte_tail() -> None:
+    result = _result(
+        stderr="[FBW_DIAGNOSTIC:SYNTAX]\n前🙂后",
+        exit_code=1,
+    )
+
+    feedback = FeedbackEngine(100).from_test(result)
+
+    assert feedback.kind is FeedbackKind.SYNTAX_ERROR
+    assert feedback.output_tail == "前🙂后"
+    assert "FBW_DIAGNOSTIC" not in feedback.output_tail
+
+
 @pytest.mark.skipif(os.name != "nt", reason="Windows taskkill contract")
 def test_windows_timeout_kills_entire_process_tree_with_fixed_arguments(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path

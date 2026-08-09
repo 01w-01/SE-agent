@@ -14,13 +14,13 @@ _WINDOWS_PATH_PATTERN = re.compile(
     r"(?i)(?<![A-Za-z0-9_])[A-Z]:[\\/](?:[^\\/\r\n:]+[\\/])*[^\\/\r\n:]*"
 )
 _POSIX_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9_.-])/(?:[^/\s:]+/)+[^/\s:]*")
-_AUTHORIZATION_PATTERN = re.compile(r"(?i)\bauthorization\b\s*[:=]\s*(?:basic|bearer)?\s*[^\s,;]+")
-_ASSIGNMENT_PATTERN = re.compile(
-    r"(?i)\b(?:api[ _-]?key|(?:[a-z0-9]+_)*(?:key|secret|password|token))\b"
-    r"\s*[:=]\s*"
-    r"(?:['\"][^'\"\r\n]*['\"]|[^\s,;]+)"
+_INTERNAL_MARKER_PATTERN = re.compile(
+    r"(?i)\[FBW_DIAGNOSTIC:(?:COLLECTION|SYNTAX|IMPORT|ASSERTION)\]\r?\n?"
 )
-_SK_PATTERN = re.compile(r"(?i)(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{8,}\b")
+_REDACTED = b"[REDACTED]"
+_SENSITIVE_SUFFIXES = (b"key", b"secret", b"password", b"token")
+_VALUE_DELIMITERS = frozenset(b" \t\r\n,;")
+_TOKEN_BYTES = frozenset(b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
 
 _SUMMARY_BY_KIND = {
     FeedbackKind.PASSED: "Pytest passed.",
@@ -31,6 +31,229 @@ _SUMMARY_BY_KIND = {
     FeedbackKind.TIMEOUT: "Pytest exceeded the configured timeout.",
     FeedbackKind.UNKNOWN_TEST_FAILURE: "Pytest failed for an unknown reason.",
 }
+
+
+class OutputRedactor:
+    """Incrementally remove secrets without retaining unbounded raw values."""
+
+    def __init__(self, known_secrets: tuple[str, ...] = ()) -> None:
+        self._structured = _StructuredSecretRedactor()
+        self._sk_tokens = _SkTokenRedactor()
+        self._known = _KnownSecretRedactor(known_secrets)
+
+    def feed(self, chunk: bytes) -> bytes:
+        structured = self._structured.feed(chunk)
+        tokens = self._sk_tokens.feed(structured)
+        return self._known.feed(tokens)
+
+    def finish(self) -> bytes:
+        structured = self._structured.finish()
+        tokens = self._sk_tokens.feed(structured) + self._sk_tokens.finish()
+        return self._known.feed(tokens) + self._known.finish()
+
+
+class _StructuredSecretRedactor:
+    def __init__(self) -> None:
+        self._mode = "normal"
+        self._word_tail = bytearray()
+        self._after_word_space = False
+        self._quote: int | None = None
+        self._escaped = False
+
+    def feed(self, chunk: bytes) -> bytes:
+        output = bytearray()
+        for byte in chunk:
+            self._consume(byte, output)
+        return bytes(output)
+
+    def finish(self) -> bytes:
+        return b""
+
+    def _consume(self, byte: int, output: bytearray) -> None:
+        if self._mode == "line":
+            if byte in b"\r\n":
+                self._mode = "normal"
+                output.append(byte)
+            return
+        if self._mode == "quoted":
+            if self._escaped:
+                self._escaped = False
+            elif byte == ord("\\"):
+                self._escaped = True
+            elif byte == self._quote:
+                self._mode = "normal"
+            return
+        if self._mode == "unquoted":
+            if byte in _VALUE_DELIMITERS:
+                self._mode = "normal"
+                self._consume_normal(byte, output)
+            return
+        if self._mode == "await_value":
+            if byte in b" \t":
+                return
+            if byte in b"'\"":
+                self._quote = byte
+                self._escaped = False
+                self._mode = "quoted"
+                return
+            if byte in _VALUE_DELIMITERS:
+                self._mode = "normal"
+                self._consume_normal(byte, output)
+                return
+            self._mode = "unquoted"
+            return
+        self._consume_normal(byte, output)
+
+    def _consume_normal(self, byte: int, output: bytearray) -> None:
+        word = bytes(self._word_tail).lower()
+        if byte in b"=":
+            output.append(byte)
+            if _is_sensitive_field(word):
+                output.extend(_REDACTED)
+                self._mode = "await_value"
+            self._word_tail.clear()
+            self._after_word_space = False
+            return
+        if byte == ord(":"):
+            output.append(byte)
+            if word == b"authorization":
+                output.extend(_REDACTED)
+                self._mode = "line"
+            elif _is_sensitive_field(word):
+                output.extend(_REDACTED)
+                self._mode = "await_value"
+            self._word_tail.clear()
+            self._after_word_space = False
+            return
+        if byte in b" \t":
+            output.append(byte)
+            if word == b"bearer":
+                output.extend(_REDACTED)
+                self._mode = "await_value"
+                self._word_tail.clear()
+            else:
+                self._after_word_space = True
+            return
+        if byte in b"\r\n":
+            output.append(byte)
+            self._word_tail.clear()
+            self._after_word_space = False
+            return
+
+        output.append(byte)
+        if self._after_word_space:
+            self._word_tail.clear()
+            self._after_word_space = False
+        if byte in _TOKEN_BYTES:
+            self._word_tail.append(byte)
+            if len(self._word_tail) > 32:
+                del self._word_tail[:-32]
+        else:
+            self._word_tail.clear()
+
+
+class _SkTokenRedactor:
+    def __init__(self) -> None:
+        self._candidate = bytearray()
+        self._suppressing = False
+
+    def feed(self, chunk: bytes) -> bytes:
+        output = bytearray()
+        for byte in chunk:
+            self._consume(byte, output)
+        return bytes(output)
+
+    def finish(self) -> bytes:
+        remaining = bytes(self._candidate)
+        self._candidate.clear()
+        return remaining
+
+    def _consume(self, byte: int, output: bytearray) -> None:
+        if self._suppressing:
+            if byte in _TOKEN_BYTES:
+                return
+            self._suppressing = False
+            self._consume(byte, output)
+            return
+
+        expected = (ord("s"), ord("k"), ord("-"))
+        if len(self._candidate) < 3:
+            wanted = expected[len(self._candidate)]
+            if byte | 32 == wanted:
+                self._candidate.append(byte)
+                return
+            if self._candidate:
+                output.extend(self._candidate)
+                self._candidate.clear()
+                self._consume(byte, output)
+                return
+            output.append(byte)
+            return
+
+        if byte not in _TOKEN_BYTES:
+            output.extend(self._candidate)
+            self._candidate.clear()
+            self._consume(byte, output)
+            return
+        self._candidate.append(byte)
+        if len(self._candidate) == 11:
+            output.extend(_REDACTED)
+            self._candidate.clear()
+            self._suppressing = True
+
+
+class _KnownSecretRedactor:
+    def __init__(self, known_secrets: tuple[str, ...]) -> None:
+        self._patterns = tuple(
+            sorted(
+                {secret.encode("utf-8").lower() for secret in known_secrets if secret},
+                key=len,
+            )
+        )
+        self._pending = bytearray()
+
+    def feed(self, chunk: bytes) -> bytes:
+        if not self._patterns:
+            return chunk
+        output = bytearray()
+        for byte in chunk:
+            self._pending.append(byte)
+            self._release(output, final=False)
+        return bytes(output)
+
+    def finish(self) -> bytes:
+        output = bytearray()
+        self._release(output, final=True)
+        return bytes(output)
+
+    def _release(self, output: bytearray, *, final: bool) -> None:
+        while self._pending:
+            folded = bytes(self._pending).lower()
+            prefixes = tuple(pattern for pattern in self._patterns if pattern.startswith(folded))
+            if prefixes and not final:
+                if folded in self._patterns and not any(
+                    len(pattern) > len(folded) for pattern in prefixes
+                ):
+                    output.extend(_REDACTED)
+                    self._pending.clear()
+                return
+
+            exact_prefixes = tuple(
+                pattern for pattern in self._patterns if folded.startswith(pattern)
+            )
+            if exact_prefixes:
+                longest = max(exact_prefixes, key=len)
+                output.extend(_REDACTED)
+                del self._pending[: len(longest)]
+                continue
+            output.append(self._pending.pop(0))
+
+
+def _is_sensitive_field(word: bytes) -> bool:
+    canonical = word.replace(b"-", b"_")
+    return any(
+        canonical == suffix or canonical.endswith(b"_" + suffix) for suffix in _SENSITIVE_SUFFIXES
+    )
 
 
 class FeedbackEngine:
@@ -47,7 +270,7 @@ class FeedbackEngine:
         failed_tests = tuple(
             sorted(node_id for node_id in node_id_candidates if self._is_safe_node_id(node_id))
         )
-        safe_output = self._redact(combined)
+        safe_output = _INTERNAL_MARKER_PATTERN.sub("", self._redact(combined))
         feedback = Feedback(
             kind=kind,
             passed=kind is FeedbackKind.PASSED,
@@ -81,12 +304,9 @@ class FeedbackEngine:
         return replace(feedback, fingerprint=fingerprint(feedback))
 
     def _redact(self, text: str) -> str:
-        safe = text
-        for secret in sorted(self._known_secrets, key=len, reverse=True):
-            safe = re.sub(re.escape(secret), "[REDACTED]", safe, flags=re.IGNORECASE)
-        safe = _AUTHORIZATION_PATTERN.sub("Authorization: [REDACTED]", safe)
-        safe = _ASSIGNMENT_PATTERN.sub("secret=[REDACTED]", safe)
-        safe = _SK_PATTERN.sub("[REDACTED]", safe)
+        redactor = OutputRedactor(self._known_secrets)
+        payload = text.encode("utf-8", errors="replace")
+        safe = (redactor.feed(payload) + redactor.finish()).decode("utf-8", errors="replace")
         safe = _WINDOWS_PATH_PATTERN.sub("[PATH]", safe)
         return _POSIX_PATH_PATTERN.sub("[PATH]", safe)
 
