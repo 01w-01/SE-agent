@@ -252,6 +252,72 @@ def test_parser_maps_lazy_property_exceptions_without_leaking_graph(boundary: st
     assert caught.value.__context__ is None
 
 
+def test_parser_rejects_tuple_subclass_without_touching_overridden_methods() -> None:
+    secret = _synthetic_api_key("lying-parser-calls")
+    touched = {"len": False, "iter": False, "getitem": False}
+
+    class LyingCalls(tuple[RawToolCall, ...]):
+        def __len__(self) -> int:
+            touched["len"] = True
+            raise RuntimeError(secret)
+
+        def __iter__(self) -> object:
+            touched["iter"] = True
+            raise RuntimeError(secret)
+
+        def __getitem__(self, key: object) -> RawToolCall:
+            touched["getitem"] = True
+            raise RuntimeError(secret)
+
+    calls = LyingCalls((RawToolCall("list_files", "{}"),))
+
+    class LyingDecision(RawDecision):
+        @property
+        def tool_calls(self) -> tuple[RawToolCall, ...]:  # type: ignore[override]
+            return calls
+
+    decision = object.__new__(LyingDecision)
+
+    with pytest.raises(ActionParseError, match=r"^invalid action decision$") as caught:
+        ActionParser().parse(decision)
+
+    assert touched == {"len": False, "iter": False, "getitem": False}
+    assert secret not in _exception_graph_text(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+
+
+@pytest.mark.parametrize("field", ["name", "arguments"])
+def test_parser_rejects_string_subclass_without_touching_overrides(field: str) -> None:
+    secret = _synthetic_api_key(f"lying-parser-{field}")
+    touched = {"len": False, "getitem": False, "encode": False}
+
+    class LyingText(str):
+        def __len__(self) -> int:
+            touched["len"] = True
+            raise RuntimeError(secret)
+
+        def __getitem__(self, key: object) -> str:
+            touched["getitem"] = True
+            raise RuntimeError(secret)
+
+        def encode(self, *args: object, **kwargs: object) -> bytes:
+            touched["encode"] = True
+            raise RuntimeError(secret)
+
+    name: str = LyingText("read_file") if field == "name" else "read_file"
+    arguments: str = LyingText('{"path":"app.py"}') if field == "arguments" else "{}"
+    decision = RawDecision((RawToolCall(name, arguments),))
+
+    with pytest.raises(ActionParseError, match=r"^invalid action decision$") as caught:
+        ActionParser().parse(decision)
+
+    assert touched == {"len": False, "getitem": False, "encode": False}
+    assert secret not in _exception_graph_text(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+
+
 def test_parser_accepts_valid_json_at_exact_argument_limit() -> None:
     wrapper_chars = len('{"path":""}')
     arguments = '{"path":"' + "x" * (MAX_TOOL_ARGUMENT_CHARS - wrapper_chars) + '"}'
@@ -475,6 +541,69 @@ def test_llm_rejects_seventeenth_tool_call_without_accessing_it() -> None:
     assert caught.value.__context__ is None
 
 
+def test_llm_rejects_list_subclass_without_touching_overridden_methods() -> None:
+    secret = _synthetic_api_key("lying-llm-calls")
+    touched = {"len": False, "iter": False, "getitem": False}
+
+    class LyingCalls(list[object]):
+        def __len__(self) -> int:
+            touched["len"] = True
+            raise RuntimeError(secret)
+
+        def __iter__(self) -> object:
+            touched["iter"] = True
+            raise RuntimeError(secret)
+
+        def __getitem__(self, key: object) -> object:
+            touched["getitem"] = True
+            raise RuntimeError(secret)
+
+    response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="", tool_calls=LyingCalls()))]
+    )
+    sdk = _FakeSDK([response])
+
+    with pytest.raises(LLMDecisionError, match=r"^LLM decision failed$") as caught:
+        OpenAICompatibleClient(client=sdk, model="model").decide([], [])
+
+    assert touched == {"len": False, "iter": False, "getitem": False}
+    assert secret not in _exception_graph_text(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+
+
+@pytest.mark.parametrize("field", ["name", "arguments", "content"])
+def test_llm_rejects_string_subclass_without_touching_overrides(field: str) -> None:
+    secret = _synthetic_api_key(f"lying-llm-{field}")
+    touched = {"len": False, "getitem": False, "encode": False}
+
+    class LyingText(str):
+        def __len__(self) -> int:
+            touched["len"] = True
+            raise RuntimeError(secret)
+
+        def __getitem__(self, key: object) -> str:
+            touched["getitem"] = True
+            raise RuntimeError(secret)
+
+        def encode(self, *args: object, **kwargs: object) -> bytes:
+            touched["encode"] = True
+            raise RuntimeError(secret)
+
+    name: object = LyingText("list_files") if field == "name" else "list_files"
+    arguments: object = LyingText("{}") if field == "arguments" else "{}"
+    content: object = LyingText("assistant note") if field == "content" else ""
+    sdk = _FakeSDK([_sdk_response((name, arguments), content=content)])
+
+    with pytest.raises(LLMDecisionError, match=r"^LLM decision failed$") as caught:
+        OpenAICompatibleClient(client=sdk, model="model").decide([], [])
+
+    assert touched == {"len": False, "getitem": False, "encode": False}
+    assert secret not in _exception_graph_text(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+
+
 @pytest.mark.parametrize("field", ["name", "arguments"])
 def test_llm_rejects_tool_field_limit_plus_one(field: str) -> None:
     name = "n" * (MAX_TOOL_NAME_CHARS + (field == "name"))
@@ -585,6 +714,41 @@ def test_llm_decide_maps_response_property_exceptions_without_leaking_detail() -
         OpenAICompatibleClient(client=sdk, model="model").decide([], [])
 
     assert "private lazy response detail" not in repr(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+    assert len(sdk.chat.completions.calls) == 1
+
+
+@pytest.mark.parametrize("boundary", ["tool_call", "function"])
+def test_llm_maps_lazy_tool_property_exceptions_without_leaking_graph(boundary: str) -> None:
+    secret = _synthetic_api_key(f"lazy-{boundary}")
+
+    if boundary == "tool_call":
+
+        class ExplodingCall:
+            @property
+            def function(self) -> object:
+                raise RuntimeError(secret)
+
+        call: object = ExplodingCall()
+    else:
+
+        class ExplodingFunction:
+            @property
+            def name(self) -> str:
+                raise RuntimeError(secret)
+
+        call = SimpleNamespace(function=ExplodingFunction())
+
+    response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="", tool_calls=[call]))]
+    )
+    sdk = _FakeSDK([response])
+
+    with pytest.raises(LLMDecisionError, match=r"^LLM decision failed$") as caught:
+        OpenAICompatibleClient(client=sdk, model="model").decide([], [])
+
+    assert secret not in _exception_graph_text(caught.value)
     assert caught.value.__cause__ is None
     assert caught.value.__context__ is None
     assert len(sdk.chat.completions.calls) == 1

@@ -94,7 +94,7 @@ def _to_raw_decision(response: object) -> RawDecision:
         raise _MalformedResponse
     message = choices[0].message
     tool_calls = message.tool_calls
-    if not isinstance(tool_calls, (list, tuple)) or len(tool_calls) > MAX_TOOL_CALLS:
+    if type(tool_calls) not in (list, tuple) or len(tool_calls) > MAX_TOOL_CALLS:
         raise _MalformedResponse
 
     parsed: list[RawToolCall] = []
@@ -102,13 +102,18 @@ def _to_raw_decision(response: object) -> RawDecision:
         function = tool_call.function
         name = function.name
         arguments = function.arguments
-        if not isinstance(name, str) or not isinstance(arguments, str):
+        if type(name) is not str or type(arguments) is not str:
             raise _MalformedResponse
         if len(name) > MAX_TOOL_NAME_CHARS or len(arguments) > MAX_TOOL_ARGUMENT_CHARS:
             raise _MalformedResponse
         parsed.append(RawToolCall(name=name, arguments=arguments))
     raw_content = message.content
-    content = raw_content[:MAX_ASSISTANT_CONTENT_CHARS] if isinstance(raw_content, str) else ""
+    if type(raw_content) is str:
+        content = raw_content[:MAX_ASSISTANT_CONTENT_CHARS]
+    elif isinstance(raw_content, str):
+        raise _MalformedResponse
+    else:
+        content = ""
     return RawDecision(tool_calls=tuple(parsed), content=content)
 
 
