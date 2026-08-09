@@ -18,6 +18,7 @@ _INTERNAL_MARKER_PATTERN = re.compile(
     r"(?i)\[FBW_DIAGNOSTIC:(?:COLLECTION|SYNTAX|IMPORT|ASSERTION)\]\r?\n?"
 )
 _REDACTED = b"[REDACTED]"
+_MAX_CONTAINER_DEPTH = 64
 _SENSITIVE_SUFFIXES = (b"key", b"secret", b"password", b"token")
 _VALUE_DELIMITERS = frozenset(b" \t\r\n,;")
 _TOKEN_BYTES = frozenset(b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
@@ -59,11 +60,13 @@ class _StructuredSecretRedactor:
         self._after_word_space = False
         self._quote: int | None = None
         self._escaped = False
-        self._mapping_depth = 0
+        self._containers: list[int] = []
         self._last_significant: int | None = None
         self._quoted_field: bytes | None = None
+        self._quoted_field_suspicious = False
         self._key_buffer = bytearray()
         self._key_valid = False
+        self._quote_is_key = False
 
     def feed(self, chunk: bytes) -> bytes:
         output = bytearray()
@@ -75,6 +78,8 @@ class _StructuredSecretRedactor:
         return b""
 
     def _consume(self, byte: int, output: bytearray) -> None:
+        if self._mode == "suppress_rest":
+            return
         if self._mode == "line":
             if byte in b"\r\n":
                 self._mode = "normal"
@@ -88,24 +93,30 @@ class _StructuredSecretRedactor:
             elif byte == self._quote:
                 self._mode = "normal"
             return
-        if self._mode == "key_quote":
+        if self._mode == "passthrough_quote":
             output.append(byte)
             if self._escaped:
                 self._escaped = False
-                self._key_valid = False
             elif byte == ord("\\"):
                 self._escaped = True
-                self._key_valid = False
+                if self._quote_is_key:
+                    self._quoted_field_suspicious = True
             elif byte == self._quote:
                 self._mode = "normal"
-                self._quoted_field = bytes(self._key_buffer).lower() if self._key_valid else None
+                if self._quote_is_key:
+                    self._quoted_field = (
+                        bytes(self._key_buffer).lower()
+                        if self._key_valid and not self._quoted_field_suspicious
+                        else None
+                    )
                 self._last_significant = byte
-            elif byte in _TOKEN_BYTES and self._key_valid:
-                self._key_buffer.append(byte)
-                if len(self._key_buffer) > 32:
-                    del self._key_buffer[:-32]
-            else:
-                self._key_valid = False
+            elif self._quote_is_key:
+                if byte in _TOKEN_BYTES and self._key_valid:
+                    self._key_buffer.append(byte)
+                    if len(self._key_buffer) > 32:
+                        del self._key_buffer[:-32]
+                else:
+                    self._key_valid = False
             return
         if self._mode == "unquoted":
             if byte in _VALUE_DELIMITERS:
@@ -129,11 +140,20 @@ class _StructuredSecretRedactor:
         self._consume_normal(byte, output)
 
     def _consume_normal(self, byte: int, output: bytearray) -> None:
+        if byte in b"{[" and len(self._containers) >= _MAX_CONTAINER_DEPTH:
+            output.extend(_REDACTED)
+            self._containers.clear()
+            self._mode = "suppress_rest"
+            return
+
         word = bytes(self._word_tail).lower()
         field = self._quoted_field if self._quoted_field is not None else word
         if byte in b"=":
             output.append(byte)
-            if field == b"authorization":
+            if self._quoted_field_suspicious:
+                output.extend(_REDACTED)
+                self._mode = "await_value"
+            elif field == b"authorization":
                 output.extend(_REDACTED)
                 self._mode = "line"
             elif _is_sensitive_field(field):
@@ -141,12 +161,16 @@ class _StructuredSecretRedactor:
                 self._mode = "await_value"
             self._word_tail.clear()
             self._quoted_field = None
+            self._quoted_field_suspicious = False
             self._after_word_space = False
             self._last_significant = byte
             return
         if byte == ord(":"):
             output.append(byte)
-            if field == b"authorization":
+            if self._quoted_field_suspicious:
+                output.extend(_REDACTED)
+                self._mode = "await_value"
+            elif field == b"authorization":
                 output.extend(_REDACTED)
                 self._mode = "line"
             elif _is_sensitive_field(field):
@@ -154,6 +178,7 @@ class _StructuredSecretRedactor:
                 self._mode = "await_value"
             self._word_tail.clear()
             self._quoted_field = None
+            self._quoted_field_suspicious = False
             self._after_word_space = False
             self._last_significant = byte
             return
@@ -169,21 +194,23 @@ class _StructuredSecretRedactor:
         if byte in b"\r\n":
             output.append(byte)
             self._word_tail.clear()
-            self._quoted_field = None
             self._after_word_space = False
             return
 
-        if (
-            byte in b"'\""
-            and self._mapping_depth > 0
-            and self._last_significant in (ord("{"), ord(","))
-        ):
+        if byte in b"'\"":
             output.append(byte)
-            self._mode = "key_quote"
+            self._mode = "passthrough_quote"
             self._quote = byte
             self._escaped = False
+            self._quote_is_key = bool(
+                self._containers
+                and self._containers[-1] == ord("{")
+                and self._last_significant in (ord("{"), ord(","))
+            )
             self._key_buffer.clear()
             self._key_valid = True
+            self._quoted_field = None
+            self._quoted_field_suspicious = False
             self._word_tail.clear()
             self._after_word_space = False
             return
@@ -191,6 +218,7 @@ class _StructuredSecretRedactor:
         output.append(byte)
         if self._quoted_field is not None:
             self._quoted_field = None
+        self._quoted_field_suspicious = False
         if self._after_word_space:
             self._word_tail.clear()
             self._after_word_space = False
@@ -200,10 +228,13 @@ class _StructuredSecretRedactor:
                 del self._word_tail[:-32]
         else:
             self._word_tail.clear()
-        if byte == ord("{"):
-            self._mapping_depth += 1
-        elif byte == ord("}"):
-            self._mapping_depth = max(0, self._mapping_depth - 1)
+        if byte in b"{[":
+            self._containers.append(byte)
+        elif self._containers and (
+            (byte == ord("}") and self._containers[-1] == ord("{"))
+            or (byte == ord("]") and self._containers[-1] == ord("["))
+        ):
+            self._containers.pop()
         self._last_significant = byte
 
 

@@ -166,6 +166,86 @@ def test_output_redactor_requires_left_boundary_for_sk_token_across_chunks() -> 
     assert "abcdefghijk" not in _stream_redact(secret)
 
 
+@pytest.mark.parametrize(
+    "payload, hidden",
+    [
+        (b'{"note":"}","api_key":"secret-one"}', "secret-one"),
+        (b'{"note":"{,:[x]}","token":"secret-two"}', "secret-two"),
+        (
+            b'{"note":"escaped \\" } , : { text","password":"secret-three"}',
+            "secret-three",
+        ),
+        (
+            b'{"items":["} , : {", {"safe":"x"}], "api_key":"secret-four"}',
+            "secret-four",
+        ),
+        (b'{"outer":{"items":[{"api_key":"secret-five"}]}}', "secret-five"),
+    ],
+)
+@pytest.mark.parametrize("chunk_size", [1, 2, 3, 7, 10_000])
+def test_output_redactor_ignores_structure_inside_mapping_strings(
+    payload: bytes, hidden: str, chunk_size: int
+) -> None:
+    safe = _stream_redact(payload, chunk_size=chunk_size)
+
+    assert safe == _stream_redact(payload, chunk_size=len(payload))
+    assert hidden not in safe
+    assert "[REDACTED]" in safe
+
+
+@pytest.mark.parametrize(
+    "payload, hidden",
+    [
+        (b'{"api_\\u006bey":"unicode-escaped-secret"}', "unicode-escaped-secret"),
+        (b'{"to\\"ken":"quote-escaped-secret"}', "quote-escaped-secret"),
+    ],
+)
+@pytest.mark.parametrize("chunk_size", [1, 2, 3, 7, 10_000])
+def test_output_redactor_fail_closes_escaped_mapping_keys(
+    payload: bytes, hidden: str, chunk_size: int
+) -> None:
+    safe = _stream_redact(payload, chunk_size=chunk_size)
+
+    assert safe == _stream_redact(payload, chunk_size=len(payload))
+    assert hidden not in safe
+    assert "[REDACTED]" in safe
+
+
+@pytest.mark.parametrize("chunk_size", [1, 2, 3, 7, 10_000])
+def test_output_redactor_preserves_unterminated_mapping_value_at_eof(
+    chunk_size: int,
+) -> None:
+    payload = b'{"note":"unterminated } , : { and \\" quote'
+
+    assert _stream_redact(payload, chunk_size=chunk_size) == payload.decode("ascii")
+
+
+@pytest.mark.parametrize("chunk_size", [1, 2, 3, 7, 10_000])
+def test_output_redactor_preserves_mapping_external_quoted_prose(chunk_size: int) -> None:
+    payload = b'prose "contains } , : { and \\" quote" unchanged'
+
+    assert _stream_redact(payload, chunk_size=chunk_size) == payload.decode("ascii")
+
+
+@pytest.mark.parametrize("chunk_size", [1, 7, 10_000])
+def test_output_redactor_fail_closes_at_bounded_container_depth(chunk_size: int) -> None:
+    hidden = "deep-private-value"
+    payload = b"{" * 10_000 + b'"api_key":"' + hidden.encode() + b'"'
+    redactor = OutputRedactor()
+    safe = (
+        b"".join(
+            redactor.feed(payload[offset : offset + chunk_size])
+            for offset in range(0, len(payload), chunk_size)
+        )
+        + redactor.finish()
+    )
+
+    assert hidden.encode() not in safe
+    assert safe.count(b"[REDACTED]") == 1
+    assert len(safe) <= 128
+    assert len(redactor._structured._containers) <= 64
+
+
 def test_runner_reports_real_assertion_failure(tmp_path: Path) -> None:
     project = _write_project(
         tmp_path / "project", "def test_clamp_boundary():\n    assert 11 == 10\n"
