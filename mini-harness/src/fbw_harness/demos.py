@@ -86,7 +86,7 @@ def run_demo(name: str) -> DemoResult:
     with tempfile.TemporaryDirectory(prefix="fbw-harness-demo-") as temporary:
         workspace = Path(temporary) / "project"
         shutil.copytree(_FIXTURE_ROOT, workspace)
-        original = (workspace / "clamp.py").read_text(encoding="utf-8")
+        original = _read_disk_text(workspace / "clamp.py")
         decisions = _decisions(name, original)
         llm = ScriptedMockLLM(decisions)
         factory = _MockFactory(llm)
@@ -99,7 +99,7 @@ def run_demo(name: str) -> DemoResult:
             events=events,
             trace=trace,
         )
-        current = (workspace / "clamp.py").read_text(encoding="utf-8")
+        current = _read_disk_text(workspace / "clamp.py")
         policy_decisions = tuple(trace.policy_decisions)
         run_events = tuple(events.events)
         demo = DemoResult(
@@ -213,6 +213,11 @@ def _call(name: str, arguments: dict[str, str]) -> RawDecision:
 
 def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _read_disk_text(path: Path) -> str:
+    with path.open("r", encoding="utf-8", newline="") as stream:
+        return stream.read()
 
 
 def _verify(name: str, demo: DemoResult) -> None:
