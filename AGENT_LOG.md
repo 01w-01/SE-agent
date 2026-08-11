@@ -321,6 +321,18 @@
 - 分支已推送；PR：[PR #12](https://github.com/01w-01/SE-agent/pull/12)。
 - 合并后 Windows 主 worktree 复验稳定失败：CRLF fixture 被 `read_text()` 规范化为 LF，expected SHA 与 FileTransaction 的磁盘字节哈希不一致。经 systematic-debugging 追踪到两个 `EditConflictError`，以显式 CRLF TDD 回归最小修复；提交 `e9b1cd9 fix: 保留演示 fixture 的 CRLF 换行`，控制器复验机制 `7 passed`、全量 `744 passed, 1 skipped` 及静态门禁通过。该集成 hotfix 不属于第二轮 reviewer/fix loop；补充 PR：[PR #13](https://github.com/01w-01/SE-agent/pull/13)。
 
+### 2026-08-11 · P-032 · 正式 Task 13 README、CI 与 Windows 单文件分发
+
+- Superpowers 技能：`using-git-worktrees`、`subagent-driven-development`、`test-driven-development`、`systematic-debugging`、`requesting-code-review`、`receiving-code-review`、`verification-before-completion`。
+- worktree：`D:\Codes\FBW-worktrees\task-13`；分支 `task/13-distribution`，基线 `fdf0830`，基线全量 `744 passed, 1 skipped`。
+- 首版提交 `852db5e build: 添加 CI 与 Windows 分发`：根/包 README、GitLab unit-test、GitHub Windows/tag workflow、PyInstaller spec、staging build、当前/历史秘密扫描和分发合同测试。
+- 冻结边界实测：依次以真实 exe RED 定位包入口相对导入、fixture 未携带、冻结 `sys.executable -m pytest` 三个根因；在 spec/workpath 入口与数据/pytest 收集中最小修复，使单文件 `--help` 和 `demo all` 无需系统 Python、网络或 Key。
+- 唯一 task review：规格 PASS、质量/安全 APPROVED、0 Critical；报告 staging cleanup 失败后最终产物残留、合同测试偏弱和 README cwd 三项。
+- 唯一 fix round 1/1：受控复现 cleanup 非零但 exe 留存，统一失败清理最终 exe/SHA；补 spec、workflow、历史输出严格合同并修 README；提交 `84d4527 fix: 收紧分发构建清理门禁`，按用户裁决不做第二轮复审。
+- 控制器最终门禁：定向 `6 passed`、完整 build 内全量 `750 passed, 1 skipped`、Ruff、format、当前树扫描、exe help/demo、SHA 与累计 diff 全部通过。
+- 历史扫描按用户已接受的临时 Key 风险真实退出 `1`，只输出 SHA 与路径；tag/Release 继续被阻断，没有改写历史或弱化门禁。
+- 分支已推送；PR：[PR #14](https://github.com/01w-01/SE-agent/pull/14)。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |

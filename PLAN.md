@@ -1520,7 +1520,7 @@ git commit -m "feat: 添加 CLI 与机制演示"
 - Consumes: Task 12 的 console script 和 demo。
 - Produces: `dist/fbw-harness.exe`、`dist/fbw-harness.exe.sha256`、GitLab `unit-test` job、Windows tag workflow、完整用户文档。
 
-- [ ] **Step 1: 写交付文件和 CI 合同失败测试**
+- [x] **Step 1: 写交付文件和 CI 合同失败测试**
 
 ```python
 def repo_root() -> Path:
@@ -1539,29 +1539,29 @@ def test_gitlab_has_exact_unit_test_job() -> None:
     assert "uv run --project mini-harness pytest" in text
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `uv run --project mini-harness pytest mini-harness/tests/test_distribution_files.py -v`
 
 Expected: FAIL listing missing distribution files.
 
-- [ ] **Step 3: 写正式 README**
+- [x] **Step 3: 写正式 README**
 
 根 README 必须包含：项目简介、获取与安装、首次安全配置 Key、运行命令与示例、目录结构、测试与三项机制演示、分发命令、安全边界、凭据威胁模型摘要、已知限制、第三方依赖/许可证、课程文档索引。明确 pytest 以用户权限执行而非 OS 沙箱，首版不提供 WebUI。
 
-- [ ] **Step 4: 实现确定性 PyInstaller 构建脚本**
+- [x] **Step 4: 实现确定性 PyInstaller 构建脚本**
 
 `fbw-harness.spec` 收集 keyring Windows backend；`scripts/build.ps1` 先运行测试和当前树扫描，再执行 PyInstaller，最后用 `Get-FileHash -Algorithm SHA256` 生成只含 hash 与文件名的 `.sha256`。构建失败不得保留被误认为成功的新产物。
 
-- [ ] **Step 5: 配置 GitLab 和 GitHub Actions**
+- [x] **Step 5: 配置 GitLab 和 GitHub Actions**
 
 `.gitlab-ci.yml` 的 `unit-test` 在 Python 3.13/uv 环境运行当前树扫描、ruff、pytest。GitHub workflow 使用 Windows runner、`fetch-depth: 0`，push/PR 运行测试；tag 时额外运行历史扫描、build、exe `--help` 和 demo，再上传 exe、SHA-256、说明。任何一步失败都不创建 Release。
 
-- [ ] **Step 6: 实现不泄露匹配内容的历史扫描**
+- [x] **Step 6: 实现不泄露匹配内容的历史扫描**
 
 `scripts/scan-history.ps1` 遍历 `git rev-list --all`，对每个 commit 使用 `git grep -I -l -E 'sk-[A-Za-z0-9]{12,}' <commit> -- .`；日志只输出 commit SHA 和路径，绝不输出匹配行。当前已知历史会返回 `1`，因此只在 tag/release 门禁执行。
 
-- [ ] **Step 7: 运行本地构建和冷净命令验证**
+- [x] **Step 7: 运行本地构建和冷净命令验证**
 
 Run: `pwsh -NoProfile -File scripts/build.ps1`
 
@@ -1571,7 +1571,7 @@ Run: `./dist/fbw-harness.exe demo all`
 
 Expected: 构建和两次运行退出 `0`，SHA-256 可用 `Get-FileHash` 复核；不需要系统 Python、网络或 Key 运行 help/demo。
 
-- [ ] **Step 8: 全量验证并提交**
+- [x] **Step 8: 全量验证并提交**
 
 Run: `uv run --project mini-harness pytest -q`
 
@@ -1581,6 +1581,8 @@ Run: `uv run --project mini-harness ruff check mini-harness/src mini-harness/tes
 git add -- README.md mini-harness/README.md mini-harness/fbw-harness.spec mini-harness/tests/test_distribution_files.py scripts .gitlab-ci.yml .github/workflows/release.yml
 git commit -m "build: 添加 CI 与 Windows 分发"
 ```
+
+**实现记录（2026-08-11）：** `852db5e build: 添加 CI 与 Windows 分发` 完成根 README、包内 README、GitLab/GitHub CI、PyInstaller spec、确定性 build、历史扫描和分发合同。真实构建逐步暴露并修复包入口相对导入、fixture 缺失、冻结 exe 不能处理 `-m pytest` 三个冻结边界，最终单文件 help/demo 无需系统 Python、网络或 Key。唯一 task review 为规格 PASS、质量/安全 APPROVED、0 Critical；两项 Important/TODO 与一项 Minor 在唯一 fix round 1/1 中以 `84d4527 fix: 收紧分发构建清理门禁` 集中处理：staging 清理失败统一删除已发布 exe/SHA，合同测试覆盖 spec/workflow/历史输出，README 命令统一从仓库根运行；不做第二轮复审。控制器最终验证：分发合同 `6 passed`、全量 `750 passed, 1 skipped`、Ruff、format、当前树扫描、完整 build、exe help/demo、SHA 和累计 diff 通过。现有历史扫描按已接受的临时 Key 风险真实退出 `1`，因此 tag/Release 继续被阻断，未弱化或伪装通过。集成见 [PR #14](https://github.com/01w-01/SE-agent/pull/14)。
 
 ---
 
