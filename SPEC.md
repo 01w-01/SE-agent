@@ -313,10 +313,10 @@ SessionState 1 ── * Action 1 ── 1 PolicyDecision
 | 项目 | 规约 |
 |---|---|
 | 输入 | 任务、工具 schema、项目摘要、最近 Observation/Feedback、按需读取的文件内容 |
-| 行为 | ContextBuilder 按优先级构造上下文；OpenAICompatibleClient 发起单次 Chat Completions；ActionParser 只接受唯一工具调用或结构化 finish |
+| 行为 | ContextBuilder 先限界再按优先级构造上下文；OpenAICompatibleClient 发起单次 Chat Completions；ActionParser 只接受唯一工具调用或结构化 finish；真实与 Mock 客户端共用相同决策边界 |
 | 输出 | Action 或结构化解析错误 |
-| 边界 | 不全量加载仓库；旧观察压缩，最后反馈和相关文件优先保留 |
-| 错误 | 鉴权错误立即停止；临时网络错误最多重试 2 次；连续 3 次格式错误停止 |
+| 边界 | 不全量加载仓库；旧观察按“清正文再删除最旧项”压缩，最后反馈和相关文件优先保留；最多 16 个 tool calls、64 字符工具名、4 MiB arguments、16,000 字符 assistant content，所有不可信容器/字符串要求精确内建类型 |
+| 错误 | 鉴权错误立即停止；临时网络错误最多重试 2 次；格式、惰性属性、超限或伪装类型统一转为无异常链的固定错误；连续 3 次格式错误停止 |
 
 ### F-04 文件发现与读取
 
