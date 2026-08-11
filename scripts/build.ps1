@@ -18,9 +18,13 @@ function Invoke-Native([scriptblock]$Command) {
     }
 }
 
+function Remove-PublishedArtifacts {
+    Remove-Item -LiteralPath $artifact -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $checksum -Force -ErrorAction SilentlyContinue
+}
+
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
-Remove-Item -LiteralPath $artifact -Force -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath $checksum -Force -ErrorAction SilentlyContinue
+Remove-PublishedArtifacts
 
 try {
     Invoke-Native { uv run --project $project pytest -q }
@@ -40,12 +44,17 @@ try {
     Set-Content -LiteralPath $checksum -Value "$hash  fbw-harness.exe" -Encoding utf8NoBOM -NoNewline
 }
 catch {
-    Remove-Item -LiteralPath $artifact -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $checksum -Force -ErrorAction SilentlyContinue
+    Remove-PublishedArtifacts
     throw
 }
 finally {
     if (Test-Path -LiteralPath $staging) {
-        Remove-Item -LiteralPath $staging -Recurse -Force
+        try {
+            Remove-Item -LiteralPath $staging -Recurse -Force
+        }
+        catch {
+            Remove-PublishedArtifacts
+            throw
+        }
     }
 }

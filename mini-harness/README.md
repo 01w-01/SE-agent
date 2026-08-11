@@ -4,9 +4,11 @@
 
 开发命令：
 
+请从仓库根目录运行：
+
 ```powershell
 uv run --project mini-harness pytest -q
-uv run --project mini-harness ruff check src tests
+uv run --project mini-harness ruff check mini-harness/src mini-harness/tests
 uv run --project mini-harness fbw-harness demo all
 ```
 
