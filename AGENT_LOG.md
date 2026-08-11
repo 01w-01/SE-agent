@@ -298,6 +298,17 @@
 - Task 11 继承：仅成功 RunResult 调用 `save_success()`；仅 enabled 且 `load()` 成功才注入 ContextBuilder；路径式 R-11 与固定安全提示必须保持。
 - 分支已推送；PR：[PR #10](https://github.com/01w-01/SE-agent/pull/10)。
 
+### 2026-08-11 · P-030 · 正式 Task 11 Agent 主循环与威胁边界裁决
+
+- Superpowers 技能：`subagent-driven-development`、`test-driven-development`、`receiving-code-review`、`requesting-code-review`、`verification-before-completion`、`finishing-a-development-branch`。
+- worktree：`D:\Codes\FBW-worktrees\task-11`；分支 `task/11-agent-loop`，基线 `5f8799a`。
+- 实现提交：`e102edc feat: 实现 Agent 主循环`、`de4c48e fix: 修正 Agent 循环审查问题`、`c654dc6 fix: 收紧 Agent 循环安全边界`；覆盖 ToolDispatcher、显式状态机、真实 pytest 反馈闭环、治理/HITL、事务终态、ApplicationService、记忆与凭据注入。
+- 用户裁决：有限 `_CAPABILITY_TOKENS` 只作常见模式的 best-effort `CONFIRM` 提示；它不是安全边界，不要求覆盖未列 API、字符串拼接或纯内置函数，也不继续扩表或重构。安全边界固定为工作区路径围栏、动作级策略/HITL、逐文件事务与回滚；工作区 pytest 代码执行列为 SPEC R-12 已知限制。
+- 小范围 TDD 收口：先以提交/完整回滚两个终态复现恢复目录 `rmdir()` 的 `KeyboardInterrupt` 逸出，再由清理边界吞掉 `BaseException`，确保磁盘终态已确定后仍返回原 `RunResult`；提交 `4cd4cb4 fix: 保证终态清理不改变运行结果`。
+- Task 12–14 reviewer 指令：按上述威胁模型审查；代码执行不在边界内，denylist 不要求完备；Critical 仅限数据丢失、回滚失败、凭据泄漏、越界写入，其余不阻断 PR；每个 task 最多一轮修复且不做第二轮复审。
+- 最终门禁：Task 11 相关定向 `227 passed`、全量 `729 passed, 1 skipped`、Ruff、8 文件 format、当前树秘密扫描和累计 diff check 全部通过。
+- PR：待最终门禁后回写。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |
