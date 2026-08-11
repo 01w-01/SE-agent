@@ -23,12 +23,12 @@
 
 | 门禁 | 状态 | 客观证据 |
 |---|---|---|
-| 离线全量测试 | PASS | `uv run --project mini-harness pytest -q`，exit 0；`750 passed, 1 skipped in 103.14s`。构建内再次为 `750 passed, 1 skipped in 103.33s` |
+| 离线全量测试 | PASS | 控制器复验 `uv run --project mini-harness pytest -q`，exit 0；`750 passed, 1 skipped in 123.27s`。随后构建内再次为 `750 passed, 1 skipped in 125.24s` |
 | Ruff | PASS | `uv run --project mini-harness ruff check mini-harness/src mini-harness/tests`，exit 0；`All checks passed!` |
 | 三项离线 demo | PASS | `pwsh -NoProfile -File scripts/demo.ps1`，exit 0；guardrail、feedback、no-progress 均为 PASS |
 | 当前树秘密扫描 | PASS | `pwsh -NoProfile -File scripts/scan-current-tree.ps1`，exit 0，无命中输出 |
 | Windows 单文件构建 | PASS（仅当前机） | `pwsh -NoProfile -File scripts/build.ps1`，exit 0；PyInstaller 6.22.0 / Python 3.13.13 |
-| exe SHA-256 | PASS（仅当前机） | `f8ecc9d6334c77fcdd6814a4398952a90cb0bf04363b9b99f4bfd3c9ae5a872d`；20,449,961 bytes；`.sha256` 与 `Get-FileHash` 一致 |
+| exe SHA-256 | PASS（仅当前机） | 最新构建为 `57e2393276dcf97d15ee3cf6094190274d895987062955b76b41ddd170701670`；20,447,552 bytes；`.sha256` 与 `Get-FileHash` 一致。该值校验本次产物，不声明不同构建之间字节级可复现 |
 | exe `--help` | PASS（仅当前机） | exit 0；命令帮助成功列出 run、credential、memory、demo |
 | exe `demo all` | PASS（仅当前机） | exit 0；三项 demo 均为 PASS |
 | 代码签名 | NOT PASS | `Get-AuthenticodeSignature` 为 `NotSigned`；未从 Explorer 启动，因此没有 SmartScreen 行为证据 |
