@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import uuid
 from dataclasses import replace
 from pathlib import Path
@@ -34,6 +35,8 @@ from .workspace import FileSnapshot, Workspace
 
 _MAX_CONTEXT_FILES = 100
 _MAX_CONTEXT_OBSERVATIONS = 100
+_RUN_ID_PATTERN = re.compile(r"[0-9a-f]{32}\Z")
+_RUN_ID_ERROR = "run_id is invalid"
 
 
 class ToolDispatcher:
@@ -139,13 +142,13 @@ class AgentLoop:
         self._config = config
         self._recovery_path = Path(os.path.abspath(Path(recovery_path)))
         self._memory = memory
-        self._run_id = run_id or uuid.uuid4().hex
+        self._run_id = _validated_run_id(run_id)
 
     def run(self, request: RunRequest) -> RunResult:
         state = SessionState(run_id=self._run_id)
         observations: list[Observation] = []
-        self._transition(state, RunStatus.INITIALIZING)
         try:
+            self._transition(state, RunStatus.INITIALIZING)
             return self._run_state_machine(request, state, observations)
         except KeyboardInterrupt:
             return self._failure(state, "interrupted")
@@ -264,7 +267,7 @@ class AgentLoop:
                         return self._commit_failure(state, "interrupted", touched_files)
                     except Exception:  # noqa: BLE001 - commit errors retain recovery material.
                         return self._commit_failure(state, "internal_error", touched_files)
-                    self._transition(state, RunStatus.COMPLETED)
+                    self._safe_transition(state, RunStatus.COMPLETED)
                     return RunResult(
                         status=RunStatus.COMPLETED,
                         stop_reason="completed",
@@ -286,13 +289,13 @@ class AgentLoop:
         return self._failure(state, "max_rounds")
 
     def _failure(self, state: SessionState, reason: str) -> RunResult:
-        self._transition(state, RunStatus.ROLLING_BACK)
+        self._safe_transition(state, RunStatus.ROLLING_BACK)
         try:
             report = self._dispatcher.rollback()
         except BaseException:  # noqa: BLE001 - recovery failure must still return exit semantics.
             report = RollbackReport(complete=False)
         status = RunStatus.FAILED if report.complete else RunStatus.ROLLBACK_INCOMPLETE
-        self._transition(state, status)
+        self._safe_transition(state, status)
         recovery_path = None
         if not report.complete:
             recovery_path = report.recovery_root or self._recovery_path
@@ -313,7 +316,7 @@ class AgentLoop:
         reason: str,
         touched_files: tuple[str, ...],
     ) -> RunResult:
-        self._transition(state, RunStatus.ROLLBACK_INCOMPLETE)
+        self._safe_transition(state, RunStatus.ROLLBACK_INCOMPLETE)
         return RunResult(
             status=RunStatus.ROLLBACK_INCOMPLETE,
             stop_reason=reason,
@@ -348,7 +351,13 @@ class AgentLoop:
                     payload={"round_count": state.round_count},
                 )
             )
-        except BaseException:  # noqa: BLE001 - telemetry must not alter loop semantics.
+        except Exception:  # noqa: BLE001 - ordinary telemetry failures are non-fatal.
+            return
+
+    def _safe_transition(self, state: SessionState, status: RunStatus) -> None:
+        try:
+            self._transition(state, status)
+        except BaseException:  # noqa: BLE001 - cleanup/committed states must finish safely.
             return
 
 
@@ -406,3 +415,11 @@ def _action_signature(action: Action) -> str:
         digest.update(len(encoded).to_bytes(8, "big"))
         digest.update(encoded)
     return digest.hexdigest()
+
+
+def _validated_run_id(value: object) -> str:
+    if value is None:
+        return uuid.uuid4().hex
+    if type(value) is not str or _RUN_ID_PATTERN.fullmatch(value) is None:
+        raise ValueError(_RUN_ID_ERROR) from None
+    return value

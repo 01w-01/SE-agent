@@ -76,6 +76,19 @@ class ExplodingEventSink:
         raise RuntimeError("injected event sink failure")
 
 
+class InterruptingStageEventSink(RecordingEventSink):
+    def __init__(self, stage: str) -> None:
+        super().__init__()
+        self._stage = stage
+        self._raised = False
+
+    def emit(self, event: RunEvent) -> None:
+        super().emit(event)
+        if event.stage == self._stage and not self._raised:
+            self._raised = True
+            raise KeyboardInterrupt
+
+
 class FixedCredentialStore:
     def __init__(self, value: str | None) -> None:
         self.value = value
@@ -95,10 +108,13 @@ class RecordingLLMFactory:
     def __init__(self, decisions: list[RawDecision]) -> None:
         self.decisions = decisions
         self.calls: list[dict[str, str]] = []
+        self.clients: list[ScriptedMockLLM] = []
 
     def create(self, *, base_url: str, model: str, api_key: str) -> ScriptedMockLLM:
         self.calls.append({"base_url": base_url, "model": model, "api_key": api_key})
-        return ScriptedMockLLM(self.decisions)
+        client = ScriptedMockLLM(self.decisions)
+        self.clients.append(client)
+        return client
 
 
 def tool_decision(name: str, arguments: dict[str, object]) -> RawDecision:
@@ -110,6 +126,16 @@ def runtime_api_key() -> str:
     return "".join(parts)
 
 
+def context_section(messages: list[dict[str, object]], section_name: str) -> dict[str, object]:
+    for message in messages:
+        content = message["content"]
+        assert isinstance(content, str)
+        payload = json.loads(content)
+        if payload.get("section") == section_name:
+            return payload
+    raise AssertionError(f"missing context section: {section_name}")
+
+
 def make_loop(
     root: Path,
     decisions: list[RawDecision],
@@ -118,6 +144,8 @@ def make_loop(
     approval_provider: FixedApprovalProvider | None = None,
     test_runner: object | None = None,
     event_sink: object | None = None,
+    run_id: str | None = None,
+    context_max_chars: int = 12_000,
 ) -> tuple[AgentLoop, ScriptedMockLLM, CountingToolDispatcher, FileTransaction]:
     selected_config = config or HarnessConfig()
     workspace = Workspace(root, selected_config.file_size_limit_bytes)
@@ -128,7 +156,7 @@ def make_loop(
     loop = AgentLoop(
         llm=llm,
         parser=ActionParser(),
-        context_builder=ContextBuilder(max_chars=12_000),
+        context_builder=ContextBuilder(max_chars=context_max_chars),
         policy=PolicyEngine(workspace, selected_config.normal_change_line_limit),
         dispatcher=dispatcher,
         test_runner=(
@@ -141,6 +169,7 @@ def make_loop(
         approval_provider=approval_provider or FixedApprovalProvider(True),
         config=selected_config,
         recovery_path=recovery_path,
+        run_id=run_id,
     )
     return loop, llm, dispatcher, transaction
 
@@ -343,16 +372,28 @@ def test_context_file_selection_is_bounded_before_builder(tmp_path: Path) -> Non
     root = tmp_path / "project"
     root.mkdir()
     for index in range(101):
-        (root / f"file_{index:03d}.txt").write_bytes(b"safe\n")
+        (root / f"file_{index:03d}.txt").write_bytes(f"content-{index:03d}\n".encode())
     config = HarnessConfig(max_rounds=1)
     decision = tool_decision("list_files", {})
-    loop, llm, dispatcher, _ = make_loop(root, [decision], config=config)
+    loop, llm, dispatcher, _ = make_loop(
+        root,
+        [decision],
+        config=config,
+        context_max_chars=40_000,
+    )
 
     result = loop.run(RunRequest(root, "inspect", "https://example.test/v1", "mock"))
 
     assert result.stop_reason == "max_rounds"
     assert len(llm.calls) == 1
     assert dispatcher.call_count == 1
+    files = context_section(llm.calls[0].messages, "files")["files"]
+    assert isinstance(files, list)
+    assert len(files) == 100
+    assert files[0]["path"] == "file_000.txt"
+    assert files[-1]["path"] == "file_099.txt"
+    assert files[0]["text"] == "content-000\n"
+    assert files[-1]["text"] == "content-099\n"
 
 
 def test_observation_history_is_bounded_before_builder(tmp_path: Path) -> None:
@@ -360,15 +401,29 @@ def test_observation_history_is_bounded_before_builder(tmp_path: Path) -> None:
     root = tmp_path / "project"
     root.mkdir()
     rounds = 102
-    decision = tool_decision("list_files", {})
+    for index in range(rounds):
+        (root / f"file_{index:03d}.txt").write_bytes(f"marker-{index:03d}\n".encode())
+    decisions = [
+        tool_decision("read_file", {"path": f"file_{index:03d}.txt"}) for index in range(rounds)
+    ]
     config = HarnessConfig(max_rounds=rounds, repeat_limit=rounds + 1)
-    loop, llm, dispatcher, _ = make_loop(root, [decision] * rounds, config=config)
+    loop, llm, dispatcher, _ = make_loop(
+        root,
+        decisions,
+        config=config,
+        context_max_chars=40_000,
+    )
 
     result = loop.run(RunRequest(root, "inspect", "https://example.test/v1", "mock"))
 
     assert result.stop_reason == "max_rounds"
     assert len(llm.calls) == rounds
     assert dispatcher.call_count == rounds
+    observations = context_section(llm.calls[-1].messages, "observations")["observations"]
+    assert isinstance(observations, list)
+    assert len(observations) == 100
+    assert observations[0]["output_tail"] == "marker-001\n"
+    assert observations[-1]["output_tail"] == "marker-100\n"
 
 
 def test_pytest_timeout_stops_and_removes_created_file(tmp_path: Path) -> None:
@@ -603,6 +658,44 @@ def test_application_saves_only_fixed_success_memory_summary(tmp_path: Path) -> 
     assert task_text not in serialized
     assert runtime_key not in serialized
     assert str(root) not in serialized
+
+
+def test_application_near_limit_pytest_output_reaches_next_decision(tmp_path: Path) -> None:
+    """Catches default feedback tail exhausting the total ContextBuilder budget."""
+    root = tmp_path / "project"
+    root.mkdir()
+    marker = "PYTEST-TAIL-MARKER"
+    (root / "test_loud.py").write_bytes(
+        (f"def test_loud():\n    print('x' * 11_000 + '{marker}')\n    assert False\n").encode()
+    )
+    factory = RecordingLLMFactory(
+        [
+            tool_decision("create_file", {"path": "created.py", "content": "value = 1\n"}),
+            tool_decision("finish", {"reason": "inspect feedback"}),
+        ]
+    )
+    service = ApplicationService(
+        credential_store=FixedCredentialStore(runtime_api_key()),
+        llm_factory=factory,
+        event_sink=RecordingEventSink(),
+        approval_provider=FixedApprovalProvider(True),
+        recovery_root_factory=lambda run_id: tmp_path / "recovery" / run_id,
+    )
+
+    result = service.run(
+        RunRequest(
+            root,
+            "use test feedback",
+            "https://example.test/v1",
+            "model-name",
+            config_overrides={"max_rounds": 2},
+        )
+    )
+
+    assert result.stop_reason == "max_rounds"
+    assert len(factory.clients[0].calls) == 2
+    second_context = json.dumps(factory.clients[0].calls[1].messages, ensure_ascii=False)
+    assert marker in second_context
 
 
 def test_application_failure_does_not_replace_existing_memory(tmp_path: Path) -> None:
@@ -845,3 +938,127 @@ def test_event_sink_failure_does_not_change_success(tmp_path: Path) -> None:
     assert result.status is RunStatus.COMPLETED
     assert result.exit_code == 0
     assert (root / "created.py").read_text(encoding="utf-8") == "value = 1\n"
+
+
+def test_initial_transition_keyboard_interrupt_stops_and_rolls_back(tmp_path: Path) -> None:
+    """Catches normal transition telemetry swallowing Ctrl+C before the state-machine guard."""
+    root = tmp_path / "project"
+    root.mkdir()
+    sink = InterruptingStageEventSink("initializing")
+    config = HarnessConfig(max_rounds=1)
+    loop, llm, dispatcher, _ = make_loop(
+        root,
+        [tool_decision("list_files", {})],
+        config=config,
+        event_sink=sink,
+    )
+
+    result = loop.run(RunRequest(root, "inspect", "https://example.test/v1", "mock"))
+
+    assert result.status is RunStatus.FAILED
+    assert result.stop_reason == "interrupted"
+    assert result.rollback_complete is True
+    assert len(llm.calls) == 0
+    assert dispatcher.call_count == 0
+    assert tuple(event.stage for event in sink.events) == (
+        "initializing",
+        "rolling_back",
+        "failed",
+    )
+
+
+def test_cleanup_transition_interrupt_cannot_prevent_rollback(tmp_path: Path) -> None:
+    """Catches cleanup telemetry interrupting restoration after a transactional write."""
+    root = tmp_path / "project"
+    root.mkdir()
+    sink = InterruptingStageEventSink("rolling_back")
+    decision = tool_decision("create_file", {"path": "created.py", "content": "value = 1\n"})
+    loop, _, _, _ = make_loop(
+        root,
+        [decision],
+        test_runner=ExplodingTestRunner(),
+        event_sink=sink,
+    )
+
+    result = loop.run(RunRequest(root, "add value", "https://example.test/v1", "mock"))
+
+    assert result.status is RunStatus.FAILED
+    assert result.stop_reason == "internal_error"
+    assert result.rollback_complete is True
+    assert not (root / "created.py").exists()
+    assert tuple(event.stage for event in sink.events)[-2:] == ("rolling_back", "failed")
+
+
+def test_completed_transition_interrupt_cannot_trigger_post_commit_rollback(
+    tmp_path: Path,
+) -> None:
+    """Catches terminal telemetry converting an already committed run into rollback failure."""
+    root = tmp_path / "project"
+    root.mkdir()
+    (root / "test_ok.py").write_bytes(b"def test_ok():\n    assert True\n")
+    sink = InterruptingStageEventSink("completed")
+    decisions = [
+        tool_decision("create_file", {"path": "created.py", "content": "value = 1\n"}),
+        tool_decision("finish", {"reason": "done"}),
+    ]
+    loop, _, _, _ = make_loop(root, decisions, event_sink=sink)
+
+    result = loop.run(RunRequest(root, "add value", "https://example.test/v1", "mock"))
+
+    assert result.status is RunStatus.COMPLETED
+    assert result.stop_reason == "completed"
+    assert result.rollback_complete is True
+    assert (root / "created.py").read_text(encoding="utf-8") == "value = 1\n"
+    assert sink.events[-1].stage == "completed"
+
+
+def test_valid_custom_run_id_is_used_for_every_event(tmp_path: Path) -> None:
+    """Catches a validated caller-supplied run id being replaced during a run."""
+    root = tmp_path / "project"
+    root.mkdir()
+    sink = RecordingEventSink()
+    custom_run_id = "0123456789abcdef0123456789abcdef"
+    config = HarnessConfig(max_rounds=1)
+    loop, _, _, _ = make_loop(
+        root,
+        [tool_decision("list_files", {})],
+        config=config,
+        event_sink=sink,
+        run_id=custom_run_id,
+    )
+
+    loop.run(RunRequest(root, "inspect", "https://example.test/v1", "mock"))
+
+    assert sink.events
+    assert {event.run_id for event in sink.events} == {custom_run_id}
+
+
+class RunIdSubclass(str):
+    pass
+
+
+@pytest.mark.parametrize(
+    "invalid_run_id",
+    [
+        "",
+        "A" * 32,
+        "a" * 33,
+        "secret/runtime/path",
+        b"a" * 32,
+        RunIdSubclass("a" * 32),
+    ],
+)
+def test_invalid_custom_run_id_is_rejected_without_echo(
+    tmp_path: Path, invalid_run_id: object
+) -> None:
+    """Catches unbounded or secret-bearing external run ids reaching events."""
+    root = tmp_path / "project"
+    root.mkdir()
+
+    with pytest.raises(ValueError, match="^run_id is invalid$") as caught:
+        make_loop(root, [], run_id=invalid_run_id)  # type: ignore[arg-type]
+
+    assert caught.value.__cause__ is None
+    rendered = str(invalid_run_id)
+    if rendered:
+        assert rendered not in str(caught.value)

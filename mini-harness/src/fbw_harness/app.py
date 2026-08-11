@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import uuid
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 from .config import load_config
@@ -19,7 +20,8 @@ from .testing import TestRunner
 from .transactions import FileTransaction
 from .workspace import Workspace
 
-_CONTEXT_MAX_CHARS = 12_000
+_CONTEXT_MAX_CHARS = 40_000
+_SAFE_OUTPUT_TAIL_CHARS = 4_000
 
 
 class ApplicationService:
@@ -52,6 +54,8 @@ class ApplicationService:
         if not isinstance(api_key, str) or not api_key or not api_key.isascii():
             raise InputError("API credential is not configured")
         known_secrets = (api_key,)
+        safe_output_tail = min(config.output_tail_chars, _SAFE_OUTPUT_TAIL_CHARS)
+        runtime_config = replace(config, output_tail_chars=safe_output_tail)
 
         llm = self._llm_factory.create(
             base_url=request.base_url,
@@ -76,9 +80,9 @@ class ApplicationService:
             context_builder=ContextBuilder(max_chars=_CONTEXT_MAX_CHARS),
             policy=PolicyEngine(workspace, config.normal_change_line_limit),
             dispatcher=ToolDispatcher(workspace, transaction),
-            test_runner=TestRunner(config, known_secrets=known_secrets),
+            test_runner=TestRunner(runtime_config, known_secrets=known_secrets),
             feedback_engine=FeedbackEngine(
-                config.output_tail_chars,
+                safe_output_tail,
                 known_secrets=known_secrets,
             ),
             event_sink=self._event_sink,
