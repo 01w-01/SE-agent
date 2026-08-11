@@ -82,7 +82,9 @@ def test_config_rejects_non_positive_or_non_integer_budget(value: object) -> Non
     assert str(value) not in str(error.value)
 
 
-@pytest.mark.parametrize("argument", ["--rootdir=other", "-cpytest.ini", "x;y", "x|y", "x&y", "x\ny"])
+@pytest.mark.parametrize(
+    "argument", ["--rootdir=other", "-cpytest.ini", "x;y", "x|y", "x&y", "x\ny"]
+)
 def test_config_rejects_unsafe_pytest_argument(argument: str) -> None:
     with pytest.raises(InputError) as error:
         load_config(make_request(overrides={"pytest_args": [argument]}), user_config=None)
@@ -97,7 +99,7 @@ def test_config_accepts_declared_types_and_normalizes_paths() -> None:
         make_request(
             overrides={
                 "max_rounds": 7,
-                "api_retries": 3,
+                "api_retries": 2,
                 "pytest_timeout_seconds": 30,
                 "repeat_limit": 4,
                 "file_size_limit_bytes": 1024,
@@ -113,7 +115,7 @@ def test_config_accepts_declared_types_and_normalizes_paths() -> None:
     )
 
     assert result.max_rounds == 7
-    assert result.api_retries == 3
+    assert result.api_retries == 2
     assert result.pytest_timeout_seconds == 30
     assert result.repeat_limit == 4
     assert result.file_size_limit_bytes == 1024
@@ -123,6 +125,41 @@ def test_config_accepts_declared_types_and_normalizes_paths() -> None:
     assert result.jsonl_log == Path("logs/run.jsonl")
     assert result.memory_enabled is True
     assert result.memory_path == Path("memory.json")
+
+
+@pytest.mark.parametrize("value", [1, 2])
+def test_config_accepts_api_retries_one_or_two(value: int) -> None:
+    result = load_config(
+        make_request(overrides={"api_retries": value}),
+        user_config=None,
+    )
+
+    assert result.api_retries == value
+
+
+@pytest.mark.parametrize("value", [0, 3, True])
+def test_config_rejects_api_retries_outside_exact_user_range(value: object) -> None:
+    with pytest.raises(InputError) as caught:
+        load_config(
+            make_request(overrides={"api_retries": value}),
+            user_config=None,
+        )
+
+    assert "api_retries" in str(caught.value)
+    assert str(value) not in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "contents", ["api_retries = 0\n", "api_retries = 3\n", "api_retries = true\n"]
+)
+def test_config_rejects_invalid_toml_api_retries(tmp_path: Path, contents: str) -> None:
+    project = write_toml(tmp_path / "project.toml", contents)
+
+    with pytest.raises(InputError) as caught:
+        load_config(make_request(config_path=project), user_config=None)
+
+    assert "project" in str(caught.value)
+    assert "api_retries" in str(caught.value)
 
 
 @pytest.mark.parametrize("source", ["project", "user"])
