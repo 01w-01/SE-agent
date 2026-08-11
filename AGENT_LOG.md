@@ -307,7 +307,7 @@
 - 小范围 TDD 收口：先以提交/完整回滚两个终态复现恢复目录 `rmdir()` 的 `KeyboardInterrupt` 逸出，再由清理边界吞掉 `BaseException`，确保磁盘终态已确定后仍返回原 `RunResult`；提交 `4cd4cb4 fix: 保证终态清理不改变运行结果`。
 - Task 12–14 reviewer 指令：按上述威胁模型审查；代码执行不在边界内，denylist 不要求完备；Critical 仅限数据丢失、回滚失败、凭据泄漏、越界写入，其余不阻断 PR；每个 task 最多一轮修复且不做第二轮复审。
 - 最终门禁：Task 11 相关定向 `227 passed`、全量 `729 passed, 1 skipped`、Ruff、8 文件 format、当前树秘密扫描和累计 diff check 全部通过。
-- PR：待最终门禁后回写。
+- 分支已推送；PR：[PR #11](https://github.com/01w-01/SE-agent/pull/11)。
 
 ## 3. 当前关键决定
 
