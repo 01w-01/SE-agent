@@ -4,6 +4,7 @@ import json
 import os
 import re
 import subprocess
+import warnings
 from pathlib import Path
 
 import pytest
@@ -101,6 +102,18 @@ def test_corrupt_memory_warning_is_fixed_and_contains_no_path(tmp_path: Path) ->
     assert str(captured[0].message) == "Project memory was ignored because its file was invalid."
     assert str(path) not in str(captured[0].message)
     assert "secret-value" not in str(captured[0].message)
+
+
+def test_corrupt_memory_survives_runtime_warning_error_filter(tmp_path: Path) -> None:
+    path = tmp_path / "memory.json"
+    path.write_text('{"version":1,"unexpected":"secret-value"}', encoding="utf-8")
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        assert JsonProjectMemoryStore(path, enabled=True).load() is None
+
+    assert not path.exists()
+    assert list(tmp_path.glob("memory.json.corrupt-*"))
 
 
 @pytest.mark.parametrize(

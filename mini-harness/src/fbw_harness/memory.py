@@ -50,7 +50,7 @@ class JsonProjectMemoryStore:
             return _parse_memory(payload)
         except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError, RecursionError):
             _isolate_corrupt(path)
-            warnings.warn(_CORRUPT_MEMORY_WARNING, RuntimeWarning, stacklevel=2)
+            _notify_corrupt_memory()
             return None
 
     def save_success(self, summary: str) -> None:
@@ -135,6 +135,13 @@ def _valid_utc_timestamp(value: str) -> bool:
     except ValueError:
         return False
     return True
+
+
+def _notify_corrupt_memory() -> None:
+    try:
+        warnings.warn(_CORRUPT_MEMORY_WARNING, RuntimeWarning, stacklevel=3)
+    except Exception:  # noqa: BLE001 - caller warning filters must not block memory fallback.
+        return
 
 
 def _utc_now() -> str:
