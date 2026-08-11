@@ -1263,7 +1263,8 @@ warning-as-error 回退；最终累计 review fix `5eeb08a` 补齐 quoted JSON/T
 秘密字段、读取状态区分与畸形路径安全失败。控制器最终验证 Task 10 `32 passed`、
 全量 `643 passed, 1 skipped`，Ruff、format、秘密扫描和累计 diff check 通过；
 最终 review 为 Ready to merge。Task 11 负责只在成功运行后调用 `save_success()`，
-并仅在 enabled 且 `load()` 成功时把记忆注入 ContextBuilder。
+并仅在 enabled 且 `load()` 成功时把记忆注入 ContextBuilder。集成见
+[PR #10](https://github.com/01w-01/SE-agent/pull/10)。
 
 ---
 

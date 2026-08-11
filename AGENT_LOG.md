@@ -296,6 +296,7 @@
 - 最终 review：三项累计 finding 全部 ADDRESSED，无新 Critical / Important；结论 Ready to merge。
 - 控制器最终验证：Task 10 `32 passed`、全量 `643 passed, 1 skipped`、Ruff、format、当前树秘密扫描和累计 diff check 全部通过；唯一 skip 延续为 Windows 不适用的 POSIX killpg 分支。
 - Task 11 继承：仅成功 RunResult 调用 `save_success()`；仅 enabled 且 `load()` 成功才注入 ContextBuilder；路径式 R-11 与固定安全提示必须保持。
+- 分支已推送；PR：[PR #10](https://github.com/01w-01/SE-agent/pull/10)。
 
 ## 3. 当前关键决定
 
