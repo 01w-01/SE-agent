@@ -309,6 +309,17 @@
 - 最终门禁：Task 11 相关定向 `227 passed`、全量 `729 passed, 1 skipped`、Ruff、8 文件 format、当前树秘密扫描和累计 diff check 全部通过。
 - 分支已推送；PR：[PR #11](https://github.com/01w-01/SE-agent/pull/11)。
 
+### 2026-08-11 · P-031 · 正式 Task 12 CLI 与三项 Mock 机制演示
+
+- Superpowers 技能：`using-git-worktrees`、`subagent-driven-development`、`test-driven-development`、`requesting-code-review`、`receiving-code-review`、`verification-before-completion`。
+- worktree：`D:\Codes\FBW-worktrees\task-12`；分支 `task/12-cli-demos`，基线 `4447261`，基线全量 `729 passed, 1 skipped`。
+- 首版提交：`473b32a feat: 添加 CLI 与机制演示`；提供 `run`、`credential`、`memory clear`、`demo` 子命令、Console/JSONL 事件边界、隐藏凭据输入、临时目录机制演示和 PowerShell 一键脚本。
+- 唯一 task review：0 Critical；代码质量与安全 APPROVED；两项 Important/TODO 指出 guardrail 指标原为推算，以及组合根测试未观察真实 factory/loop 构造。两项均属于 brief 可观察行为，不涉及 SPEC R-12 的代码执行非目标。
+- 唯一 fix round 1/1：先复现 ALLOW 策略下 dispatcher 调用两次而旧 demo 仍 PASS，再让结果来自真实 PolicyDecision/RunEvent/dispatcher 记录；同时实际运行 CLI 与 demo 组合根，证明同一 ApplicationService/AgentLoop、不同真实/Mock factory；提交 `4ab5134 fix: 强化演示机制验证`。按用户裁决不做第二轮复审。
+- 控制器最终门禁：Task 12 定向 `11 passed`、全量 `743 passed, 1 skipped`；CLI help、`demo all`、`scripts/demo.ps1`、Ruff、本任务 format、正式当前树秘密扫描和累计 diff check 全部通过。
+- 已知非阻断状态：全树 format 仍有 Task 12 白名单外的既有漂移，未跨任务修改；唯一 pytest skip 仍为 Windows 不适用的 POSIX killpg 分支。
+- 分支已推送；PR：[PR #12](https://github.com/01w-01/SE-agent/pull/12)。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |
