@@ -1198,7 +1198,8 @@ git commit -m "feat: 添加 LLM 决策与上下文构建"
 `53f29a8`、`80ca933`，补齐惰性异常统一映射、先限界后脱敏、最旧项完整淘汰、
 schema 防污染、LLM 输出硬上限及伪装内建类型拒绝。最终验证 Task 9
 `113 passed`、全量 `611 passed, 1 skipped`，Ruff、format、秘密扫描和累计
-diff check 通过；独立 review 为 0 Critical / 0 Important。
+diff check 通过；独立 review 为 0 Critical / 0 Important；集成见
+[PR #9](https://github.com/01w-01/SE-agent/pull/9)。
 
 ---
 
