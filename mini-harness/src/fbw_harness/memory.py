@@ -5,6 +5,7 @@ import os
 import re
 import stat
 import tempfile
+import warnings
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -15,12 +16,14 @@ _ALLOWED_FIELDS = frozenset({"version", "project_notes", "last_success_summary",
 _TEXT_FIELDS = frozenset({"project_notes", "last_success_summary"})
 _MAX_TEXT_CHARS = 2_000
 _MAX_FILE_BYTES = 128 * 1024
+_CORRUPT_MEMORY_WARNING = "Project memory was ignored because its file was invalid."
 _SECRET_FIELD_PATTERN = (
     r"(?i)(?:api[_-]?key|access[_-]?key(?:[_-]?id)?|access[_-]?token|"
     r"authorization|bearer|client[_-]?secret|credential|file[_-]?content|"
     r"password|private[_-]?key|refresh[_-]?token|secret|token)\s*[:=]"
 )
 _SECRET_FIELD_RE = re.compile(_SECRET_FIELD_PATTERN)
+_UTC_TIMESTAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z\Z")
 
 
 class JsonProjectMemoryStore:
@@ -47,6 +50,7 @@ class JsonProjectMemoryStore:
             return _parse_memory(payload)
         except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError, RecursionError):
             _isolate_corrupt(path)
+            warnings.warn(_CORRUPT_MEMORY_WARNING, RuntimeWarning, stacklevel=2)
             return None
 
     def save_success(self, summary: str) -> None:
@@ -69,7 +73,7 @@ class JsonProjectMemoryStore:
             return
         path = self._path
         assert path is not None
-        if _target_state(path) != "regular":
+        if not _path_is_safe(path) or _target_state(path) != "regular":
             return
         try:
             path.unlink()
@@ -99,7 +103,7 @@ def _parse_memory(payload: object) -> ProjectMemory:
         if not _safe_text(value):
             raise ValueError("invalid memory text")
     updated_at = payload["updated_at"]
-    if not _safe_text(updated_at):
+    if not _safe_text(updated_at) or not _valid_utc_timestamp(updated_at):
         raise ValueError("invalid memory timestamp")
     return ProjectMemory(
         version=payload["version"],
@@ -123,11 +127,23 @@ def _looks_like_token(value: str) -> bool:
     return any(prefix in lowered for prefix in prefixes)
 
 
+def _valid_utc_timestamp(value: str) -> bool:
+    if _UTC_TIMESTAMP_RE.fullmatch(value) is None:
+        return False
+    try:
+        datetime.fromisoformat(value[:-1])
+    except ValueError:
+        return False
+    return True
+
+
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _read_bytes(path: Path) -> bytes:
+    if not _path_is_safe(path) or _target_state(path) != "regular":
+        raise ValueError("memory target changed before reading")
     with path.open("rb") as stream:
         metadata = os.fstat(stream.fileno())
         _validate_regular_metadata(metadata)
