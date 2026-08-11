@@ -4,6 +4,7 @@ import os
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -39,11 +40,18 @@ class TestRunner:
 
     def run(self, workspace: Path | Workspace) -> TestResult:
         started = time.perf_counter()
+        bytecode_cache: tempfile.TemporaryDirectory[str] | None = None
         try:
             root = workspace.root if isinstance(workspace, Workspace) else Path(workspace).resolve()
             command = [sys.executable, "-m", "pytest", *self._config.pytest_args]
+            bytecode_cache = tempfile.TemporaryDirectory(
+                prefix="fbw-harness-pycache-", ignore_cleanup_errors=True
+            )
+            process_environment = os.environ.copy()
+            process_environment["PYTHONPYCACHEPREFIX"] = bytecode_cache.name
             process_options: dict[str, object] = {
                 "cwd": root,
+                "env": process_environment,
                 "shell": False,
                 "stdout": subprocess.PIPE,
                 "stderr": subprocess.PIPE,
@@ -54,44 +62,48 @@ class TestRunner:
                 process_options["start_new_session"] = True
             process = subprocess.Popen(command, **process_options)
         except _START_ERRORS:
+            _cleanup_bytecode_cache(bytecode_cache)
             return _start_failure(started)
 
-        stdout_reader = _TailReader(
-            process.stdout, self._config.output_tail_chars, self._known_secrets
-        )
-        stderr_reader = _TailReader(
-            process.stderr, self._config.output_tail_chars, self._known_secrets
-        )
-        readers = (stdout_reader, stderr_reader)
         try:
-            for reader in readers:
-                reader.start()
-            process.wait(timeout=self._config.pytest_timeout_seconds)
-        except subprocess.TimeoutExpired:
-            _stop_process(process)
+            stdout_reader = _TailReader(
+                process.stdout, self._config.output_tail_chars, self._known_secrets
+            )
+            stderr_reader = _TailReader(
+                process.stderr, self._config.output_tail_chars, self._known_secrets
+            )
+            readers = (stdout_reader, stderr_reader)
+            try:
+                for reader in readers:
+                    reader.start()
+                process.wait(timeout=self._config.pytest_timeout_seconds)
+            except subprocess.TimeoutExpired:
+                _stop_process(process)
+                stdout, stderr = _finish_readers(readers)
+                return TestResult(
+                    False,
+                    _TIMEOUT_EXIT_CODE,
+                    stdout,
+                    stderr,
+                    _elapsed(started),
+                    True,
+                )
+            except _PROCESS_ERRORS:
+                _stop_process(process)
+                _finish_readers(readers)
+                return _start_failure(started)
+
             stdout, stderr = _finish_readers(readers)
+            exit_code = process.returncode if isinstance(process.returncode, int) else 1
             return TestResult(
-                False,
-                _TIMEOUT_EXIT_CODE,
+                exit_code == 0,
+                exit_code,
                 stdout,
                 stderr,
                 _elapsed(started),
-                True,
             )
-        except _PROCESS_ERRORS:
-            _stop_process(process)
-            _finish_readers(readers)
-            return _start_failure(started)
-
-        stdout, stderr = _finish_readers(readers)
-        exit_code = process.returncode if isinstance(process.returncode, int) else 1
-        return TestResult(
-            exit_code == 0,
-            exit_code,
-            stdout,
-            stderr,
-            _elapsed(started),
-        )
+        finally:
+            _cleanup_bytecode_cache(bytecode_cache)
 
 
 class _TailReader:
@@ -221,6 +233,15 @@ def _bounded_wait(process: subprocess.Popen[bytes]) -> bool:
 
 def _finish_readers(readers: tuple[_TailReader, _TailReader]) -> tuple[str, str]:
     return readers[0].finish(), readers[1].finish()
+
+
+def _cleanup_bytecode_cache(cache: tempfile.TemporaryDirectory[str] | None) -> None:
+    if cache is None:
+        return
+    try:
+        cache.cleanup()
+    except (OSError, ValueError):
+        pass
 
 
 def _decode(value: bytes | str) -> str:
