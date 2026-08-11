@@ -1601,7 +1601,7 @@ git commit -m "build: 添加 CI 与 Windows 分发"
 - Consumes: Task 13 的 exe、SHA-256、CI 配置和安全脚本。
 - Produces: 真实 API 冒烟、新 Windows 环境、最终 CI 的可审计证据；只有所有强制门禁通过才产生 Release。
 
-- [ ] **Step 1: 运行离线总验证**
+- [x] **Step 1: 运行离线总验证**
 
 Run: `uv run --project mini-harness pytest -q`
 
@@ -1613,33 +1613,47 @@ Run: `pwsh -NoProfile -File scripts/build.ps1`
 
 Expected: 全部退出 `0`；把命令、版本、通过数量和产物 SHA-256 记录到 `docs/evidence/release-checklist.md`。
 
+**验收记录（2026-08-11）：** 四条命令均退出 `0`；全量测试 `750 passed, 1 skipped`，Ruff 与三项 demo 通过，构建产物 SHA-256 已复核，详见 `docs/evidence/release-checklist.md`。
+
 - [ ] **Step 2: 手动真实 API 冒烟**
 
 通过 `fbw-harness credential set` 隐藏录入学校 Key，status 不回显；对专用临时 Python 项目运行一次受控修复。证据只记录模型、Base URL 主机名、RunResult、修改相对路径和测试摘要，不记录 Key、请求头或完整 prompt。
+
+**未完成：** CredentialStore 最终状态为 `configured=False`。自动从 Git 历史读取凭据并联网的操作被安全审批拒绝，且本次没有完成必要的人工隐藏输入；未发起请求，因而没有 RunResult、修改路径或真实 API 测试摘要。临时项目已删除，CredentialStore 无残留。
 
 - [ ] **Step 3: 在干净 Windows 10/11 x64 环境验证发行物**
 
 目标机不得安装本项目 Python/uv 环境。下载/复制 exe 与 SHA-256，复核 hash，依次运行 `--help`、`credential set/status/clear`、`demo all` 和一次真实任务；记录 SmartScreen 行为、退出码和清理结果。
 
+**未完成：** 本次机器是已安装 Python/uv 的现有 Windows 11 开发机。当前机 exe `--help`、`demo all` 和 SHA-256 复核只能作为本地冒烟，不能替代干净 Windows 10/11 x64 证据；SmartScreen、凭据生命周期和真实任务均未在目标机验证。
+
 - [ ] **Step 4: 获取最后一次 GitLab CI pass 证据**
 
 保存 pipeline URL、commit SHA、`unit-test` job 名和 pass 时间到 `docs/evidence/ci-last-pass.md`。若无远端或 CI 未 pass，本 task 保持未完成，不用本地结果冒充 CI。
 
-- [ ] **Step 5: 执行已知会失败的历史凭据门禁**
+**未完成：** Git 配置只有 GitHub `origin`，没有 GitLab remote、pipeline URL、pass 时间或可核实的 `unit-test` job 结果；见 `docs/evidence/ci-last-pass.md`。
+
+- [x] **Step 5: 执行已知会失败的历史凭据门禁**
 
 Run: `pwsh -NoProfile -File scripts/scan-history.ps1`
 
 Expected under current accepted history: exit `1`，只显示 `77da924` 相关 commit/path，不显示 Key。立即停止 Release，不运行历史重写。只有用户以后明确授权修复、Key 已处理且扫描退出 `0`，AC-24 才能勾选。
 
+**验收记录（2026-08-11）：** 脚本按预期退出 `1`，输出仅含 commit/path 元数据并包含 `77da924`；没有输出匹配内容。未重写历史，AC-24 保持未完成，Release 被阻断。
+
 - [ ] **Step 6: 检查 WebUI 课程冲突**
 
 若课程方书面确认 A 项可用纯 CLI，记录确认来源；若没有确认，`release-checklist.md` 必须标记“WebUI 最终清单项未满足”，不得声称课程要求全部完成。实现 WebUI 属于新的 SPEC 变更，不在本 PLAN 偷加。
+
+**未完成：** 未找到课程方书面豁免，且仓库明确只有 CLI；“WebUI 最终清单项未满足”。本 task 未增加 WebUI 或修改 SPEC。
 
 - [ ] **Step 7: 所有门禁通过后才发布**
 
 仅当离线测试、真实 API、新机、GitLab CI、当前树扫描、历史扫描以及 WebUI 例外/实现均有通过证据时，创建版本 tag 并让 GitHub Actions 发布。任一项失败则保留本地可运行产物，但不创建公开 Release。
 
-- [ ] **Step 8: 更新过程证据并提交**
+**未完成且禁止发布：** 真实 API、干净新机、GitLab CI、历史零凭据和 WebUI 门禁均未满足；未创建 tag 或 Release。
+
+- [x] **Step 8: 更新过程证据并提交**
 
 在 `PLAN.md` 标记完成项和 commit/PR，在 `AGENT_LOG.md` 记录技能、agent、人工干预和验证输出。不得把 `REFLECTION.md` 交给 AI 代写。
 
@@ -1647,6 +1661,8 @@ Expected under current accepted history: exit `1`，只显示 `77da924` 相关 c
 git add -- README.md PLAN.md AGENT_LOG.md docs/evidence
 git commit -m "docs: 记录最终验收证据"
 ```
+
+**实现记录（2026-08-11）：** 本提交更新 README、PLAN、AGENT_LOG 与 `docs/evidence`，如实记录当前不可发布状态；没有创建 `REFLECTION.md`、tag 或 Release，PR/合并与外部 CI 仍待控制器处理。
 
 ---
 
