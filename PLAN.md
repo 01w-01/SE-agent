@@ -1408,7 +1408,7 @@ git commit -m "feat: 实现 Agent 主循环"
 
 **实现记录（2026-08-11）：** Task 11 以 `e102edc`、`de4c48e`、`c654dc6` 完成 AgentLoop、ApplicationService、治理/审批、反馈闭环、终态与恢复路径。最终审查提出的有限 capability token 表被用户裁决为已知限制：它只提供 best-effort `CONFIRM` 提示，不是安全边界，不要求完备，也不继续扩表或重构。终态后的恢复目录清理另以 TDD 收口并提交 `4cd4cb4`，保证清理阶段的 `KeyboardInterrupt` 不推翻已确定的提交或完整回滚结果。正式安全边界统一为工作区路径围栏、动作级策略/HITL、逐文件事务与回滚；工作区代码由 pytest 以当前用户权限执行，明确不在安全边界内，见 SPEC R-12。最终门禁：定向 `227 passed`、全量 `729 passed, 1 skipped`、Ruff、8 文件 format、当前树秘密扫描和累计 diff check 均通过。
 
-**Task 12–14 审查约束（用户裁决）：** reviewer 必须按上述 SPEC 威胁模型审查。工作区内代码执行相关问题只记已知限制，不判实现缺陷；不要求任何 denylist 或模式表完备。Critical 仅限数据丢失、回滚失败、凭据泄漏和越界写入；其他问题按 Important 及以下记录为 TODO/已知限制且不阻断 PR。每个 task 最多一轮修复，不做第二轮复审。
+**Task 12–14 审查约束（用户裁决）：** reviewer 必须按上述 SPEC 威胁模型审查。工作区内代码执行相关问题只记已知限制，不判实现缺陷；不要求任何 denylist 或模式表完备。Critical 仅限数据丢失、回滚失败、凭据泄漏和越界写入；其他问题按 Important 及以下记录为 TODO/已知限制且不阻断 PR。每个 task 最多一轮修复，不做第二轮复审。集成见 [PR #11](https://github.com/01w-01/SE-agent/pull/11)。
 
 ---
 
