@@ -107,6 +107,8 @@ Get-FileHash .\dist\fbw-harness.exe -Algorithm SHA256
 
 构建脚本先执行单元测试和当前树凭据扫描；成功后才发布 `dist/fbw-harness.exe` 与只含 SHA-256 和文件名的 `dist/fbw-harness.exe.sha256`。`dist/` 是本地验证产物，不提交到 Git。
 
+2026-08-11 在现有 Windows 11 x64 开发机复验：项目 Python 3.13.13、uv 0.11.17、PyInstaller 6.22.0；全量测试 `750 passed, 1 skipped`，Ruff、三项 demo、构建、exe `--help`/`demo all` 与 SHA-256 复核均通过。该结果不是无 Python/uv 的干净新机证据；完整状态见 [发布验收清单](docs/evidence/release-checklist.md)。
+
 ## 安全边界与凭据威胁模型
 
 本项目的正式安全边界仅包括三项：
@@ -125,6 +127,7 @@ API Key 仅由 Windows Credential Manager 保存；CLI、配置、JSONL、记忆
 - PyInstaller 产物尚未代码签名，需处理 SmartScreen 提示并自行复核 SHA-256。
 - 路径与哈希检查不能消除本地恶意进程的 TOCTOU 风险。
 - 当前完整 Git 历史含用户接受的临时学校 API Key。`scripts/scan-history.ps1` 因此会退出 `1` 并阻断 tag/release；在历史被合规处理前，项目不具备发布就绪状态。
+- 最终验收时 Credential Manager 未由人工隐藏输入配置，因此没有发起学校真实 API 请求；也没有干净 Windows 目标机或 GitLab pipeline pass 证据，且课程方尚未书面豁免 WebUI。以上强制门禁均未满足，本仓库当前不可发布。
 
 ## 第三方依赖与许可证
 
