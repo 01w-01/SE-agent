@@ -345,6 +345,17 @@
 - 唯一只读 task review 检查 `cd2b0ef..8e8f14c`：SPEC/PLAN、白名单、证据真实性、凭据卫生和发布裁决均通过，0 Critical、0 Important、0 Minor，文档 `Ready to merge: Yes`；reviewer 同时确认产品仍为 `NOT RELEASABLE`。无修复项，不进行第二次 re-review。
 - 分支已推送；最终证据 PR：[PR #15](https://github.com/01w-01/SE-agent/pull/15)。该 PR 只集成验收与阻塞证据，不创建 tag 或 Release。
 
+### 2026-08-12 · P-034 · GitHub Actions feedback 间歇失败 hotfix
+
+- Superpowers 技能：`systematic-debugging`、`brainstorming`、`writing-plans`、`test-driven-development`、`executing-plans`、`verification-before-completion`、`using-git-worktrees`。
+- CI 证据：PR #14 branch push run `31503814219` 与 PR #15 早期 run `31507839696` 均在 feedback demo 失败；同提交 PR/main 检查通过。PR #15 run `31507916781` 首次失败后原样重跑成功，说明当前 main 绿色但存在时序相关波动。
+- 根因：错误版与修正版 Python 文件大小相同且快速连续改写；时间戳型 `.pyc` 可能仍被判定有效，第二次 pytest 复用错误字节码，修正测试继续失败，Mock LLM 在第 4 次请求时耗尽并归一为 `api_failure`。
+- Brainstorming 选择方案 A：每次 TestRunner 使用独立 OS 临时 `PYTHONPYCACHEPREFIX`；不采用仅禁写字节码或删除工作区 `__pycache__`。设计提交 `01ddb0b`，实施计划提交 `e065451`。
+- TDD：真实 TestRunner 回归固定源码 mtime 并进行等长 `wrong`→`right` 改写；旧实现稳定 RED（第二次仍失败），最小隔离实现后 GREEN，且工作区无 `__pycache__`。
+- 验证：TestRunner/feedback `235 passed, 1 skipped`；feedback demo 连续 10 轮、20 项全部通过；全量 `751 passed, 1 skipped in 198.98s`；Ruff、两个改动文件 format、三项 demo、当前树扫描及 diff check 全部通过。
+- 权衡：独立空缓存使全量耗时增加，单次 feedback 约 14–16 秒，仍低于固定 60 秒 pytest 超时；未扩大安全边界或修改用户项目缓存。
+- 分支已推送；hotfix PR：[PR #16](https://github.com/01w-01/SE-agent/pull/16)。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |
