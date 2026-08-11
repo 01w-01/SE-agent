@@ -10,6 +10,7 @@ import fbw_harness.app as app_module
 from fbw_harness.app import ApplicationService
 from fbw_harness.config import HarnessConfig
 from fbw_harness.context import ContextBuilder
+from fbw_harness.errors import InputError
 from fbw_harness.feedback import FeedbackEngine
 from fbw_harness.llm import LLMDecisionError
 from fbw_harness.loop import AgentLoop, ToolDispatcher
@@ -19,12 +20,18 @@ from fbw_harness.models import (
     Action,
     ActionKind,
     ApprovalRequest,
+    Observation,
+    PolicyDecision,
+    PolicyLevel,
     RawDecision,
     RawToolCall,
     RunEvent,
     RunRequest,
     RunResult,
     RunStatus,
+)
+from fbw_harness.models import (
+    TestResult as HarnessOutcome,
 )
 from fbw_harness.parser import ActionParser
 from fbw_harness.policy import PolicyEngine
@@ -42,13 +49,13 @@ class RecordingEventSink:
 
 
 class FixedApprovalProvider:
-    def __init__(self, approved: bool) -> None:
+    def __init__(self, approved: object) -> None:
         self.approved = approved
         self.requests: list[ApprovalRequest] = []
 
     def confirm(self, request: ApprovalRequest) -> bool:
         self.requests.append(request)
-        return self.approved
+        return self.approved  # type: ignore[return-value]
 
 
 class CountingToolDispatcher(ToolDispatcher):
@@ -69,6 +76,21 @@ class ExplodingTestRunner:
 class InterruptingTestRunner:
     def run(self, workspace: Path | Workspace):  # type: ignore[no-untyped-def]
         raise KeyboardInterrupt
+
+
+class CountingPassingTestRunner:
+    def __init__(self) -> None:
+        self.call_count = 0
+
+    def run(self, workspace: Path | Workspace) -> HarnessOutcome:
+        self.call_count += 1
+        return HarnessOutcome(True, 0, "", "", 0.01)
+
+
+class ExplodingBoundary:
+    @property
+    def success(self) -> object:
+        raise RuntimeError("private lazy boundary detail")
 
 
 class ExplodingEventSink:
@@ -92,8 +114,10 @@ class InterruptingStageEventSink(RecordingEventSink):
 class FixedCredentialStore:
     def __init__(self, value: str | None) -> None:
         self.value = value
+        self.get_calls = 0
 
     def get(self) -> str | None:
+        self.get_calls += 1
         return self.value
 
     def set(self, value: str) -> None:
@@ -107,11 +131,20 @@ class FixedCredentialStore:
 class RecordingLLMFactory:
     def __init__(self, decisions: list[RawDecision]) -> None:
         self.decisions = decisions
-        self.calls: list[dict[str, str]] = []
+        self.calls: list[dict[str, object]] = []
         self.clients: list[ScriptedMockLLM] = []
 
-    def create(self, *, base_url: str, model: str, api_key: str) -> ScriptedMockLLM:
-        self.calls.append({"base_url": base_url, "model": model, "api_key": api_key})
+    def create(
+        self, *, base_url: str, model: str, api_key: str, max_retries: int | None = None
+    ) -> ScriptedMockLLM:
+        self.calls.append(
+            {
+                "base_url": base_url,
+                "model": model,
+                "api_key": api_key,
+                "max_retries": max_retries,
+            }
+        )
         client = ScriptedMockLLM(self.decisions)
         self.clients.append(client)
         return client
@@ -146,6 +179,7 @@ def make_loop(
     event_sink: object | None = None,
     run_id: str | None = None,
     context_max_chars: int = 12_000,
+    policy: object | None = None,
 ) -> tuple[AgentLoop, ScriptedMockLLM, CountingToolDispatcher, FileTransaction]:
     selected_config = config or HarnessConfig()
     workspace = Workspace(root, selected_config.file_size_limit_bytes)
@@ -157,7 +191,11 @@ def make_loop(
         llm=llm,
         parser=ActionParser(),
         context_builder=ContextBuilder(max_chars=context_max_chars),
-        policy=PolicyEngine(workspace, selected_config.normal_change_line_limit),
+        policy=(
+            PolicyEngine(workspace, selected_config.normal_change_line_limit)
+            if policy is None
+            else policy  # type: ignore[arg-type]
+        ),
         dispatcher=dispatcher,
         test_runner=(
             HarnessTestRunner(selected_config, known_secrets=())
@@ -261,6 +299,229 @@ def test_governance_prevents_denied_or_unapproved_tool_execution(
     assert transaction.touched_paths == ()
     assert not (root / path).exists()
     assert len(approval.requests) == (0 if path == ".env" else 1)
+
+
+@pytest.mark.parametrize(
+    ("path", "content", "approved", "expected_calls", "expected_reason"),
+    [
+        (
+            "danger.py",
+            "import subprocess\nsubprocess.run(['tool'], check=True)\n",
+            False,
+            0,
+            "user_rejected",
+        ),
+        (
+            "danger.py",
+            "import subprocess\nsubprocess.run(['tool'], check=True)\n",
+            True,
+            1,
+            "max_rounds",
+        ),
+        (
+            "network.py",
+            "import requests\nrequests.get('https://example.test')\n",
+            False,
+            0,
+            "user_rejected",
+        ),
+        ("registry.py", "import winreg\nwinreg.OpenKey(None, 'x')\n", False, 0, "user_rejected"),
+        ("huge.py", "value = 1\n" + " " * 32_001, False, 0, "user_rejected"),
+        ("safe.py", "answer = 42\n", False, 1, "max_rounds"),
+        ("module.wat", "(module)\n", False, 0, "user_rejected"),
+    ],
+)
+def test_static_capabilities_gate_dangerous_or_unknown_code_before_execution(
+    tmp_path: Path,
+    path: str,
+    content: str,
+    approved: bool,
+    expected_calls: int,
+    expected_reason: str,
+) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    approval = FixedApprovalProvider(approved)
+    runner = CountingPassingTestRunner()
+    loop, _, dispatcher, _ = make_loop(
+        root,
+        [tool_decision("create_file", {"path": path, "content": content})],
+        config=HarnessConfig(max_rounds=1),
+        approval_provider=approval,
+        test_runner=runner,
+    )
+
+    result = loop.run(RunRequest(root, "add code", "https://example.test/v1", "mock"))
+
+    assert result.stop_reason == expected_reason
+    assert dispatcher.call_count == expected_calls
+    assert runner.call_count == expected_calls
+    assert len(approval.requests) == (0 if path == "safe.py" else 1)
+    if path in {"huge.py", "module.wat"}:
+        assert "dangerous_capability:unknown" in approval.requests[0].risk_facts
+
+
+def test_static_capabilities_scan_edit_new_text_before_execution(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    original = "value = 1\n"
+    (root / "app.py").write_text(original, encoding="utf-8")
+    runner = CountingPassingTestRunner()
+    approval = FixedApprovalProvider(False)
+    loop, _, dispatcher, _ = make_loop(
+        root,
+        [
+            tool_decision(
+                "edit_file",
+                {
+                    "path": "app.py",
+                    "expected_sha256": hashlib.sha256(original.encode()).hexdigest(),
+                    "old_text": "value = 1",
+                    "new_text": "import subprocess\nsubprocess.run(['tool'])",
+                },
+            )
+        ],
+        approval_provider=approval,
+        test_runner=runner,
+    )
+
+    result = loop.run(RunRequest(root, "edit code", "https://example.test/v1", "mock"))
+
+    assert result.stop_reason == "user_rejected"
+    assert dispatcher.call_count == 0
+    assert runner.call_count == 0
+    assert len(approval.requests) == 1
+    assert (root / "app.py").read_text(encoding="utf-8") == original
+
+
+class FixedPolicy:
+    def __init__(self, decision: object) -> None:
+        self._decision = decision
+
+    def evaluate(self, action: Action, context: object) -> PolicyDecision:
+        return self._decision  # type: ignore[return-value]
+
+
+@pytest.mark.parametrize(
+    "decision",
+    [
+        PolicyDecision("deny", "bad", "bad"),  # type: ignore[arg-type]
+        PolicyDecision(PolicyLevel.ALLOW, "r" * 257, "ok"),
+        object(),
+    ],
+)
+def test_malformed_policy_decision_is_internal_error_before_tool(
+    tmp_path: Path, decision: object
+) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    loop, _, dispatcher, _ = make_loop(
+        root,
+        [tool_decision("list_files", {})],
+        policy=FixedPolicy(decision),
+    )
+
+    result = loop.run(RunRequest(root, "inspect", "https://example.test/v1", "mock"))
+
+    assert result.stop_reason == "internal_error"
+    assert result.rollback_complete is True
+    assert dispatcher.call_count == 0
+
+
+def test_unknown_capability_revalidates_augmented_policy_facts(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    decision = PolicyDecision(
+        PolicyLevel.ALLOW,
+        "ALLOW_TEST",
+        "Injected bounded decision.",
+        tuple(f"fact-{index}" for index in range(100)),
+    )
+    loop, _, dispatcher, _ = make_loop(
+        root,
+        [tool_decision("create_file", {"path": "module.wat", "content": "(module)\n"})],
+        policy=FixedPolicy(decision),
+    )
+
+    result = loop.run(RunRequest(root, "add code", "https://example.test/v1", "mock"))
+
+    assert result.stop_reason == "internal_error"
+    assert dispatcher.call_count == 0
+
+
+@pytest.mark.parametrize("approval_value", ["yes", 1])
+def test_non_boolean_approval_is_internal_error_without_execution(
+    tmp_path: Path, approval_value: object
+) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    runner = CountingPassingTestRunner()
+    loop, _, dispatcher, _ = make_loop(
+        root,
+        [tool_decision("create_file", {"path": "package.json", "content": "{}\n"})],
+        approval_provider=FixedApprovalProvider(approval_value),
+        test_runner=runner,
+    )
+
+    result = loop.run(RunRequest(root, "add package", "https://example.test/v1", "mock"))
+
+    assert result.stop_reason == "internal_error"
+    assert dispatcher.call_count == 0
+    assert runner.call_count == 0
+
+
+@pytest.mark.parametrize(
+    "observation",
+    [
+        Observation("list_files", "yes", "bad"),  # type: ignore[arg-type]
+        Observation("list_files", True, "bad", exit_code=1),
+        Observation("finish", True, "wrong kind"),
+        ExplodingBoundary(),
+    ],
+)
+def test_malformed_observation_is_internal_error_and_rolls_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, observation: object
+) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    loop, _, dispatcher, _ = make_loop(root, [tool_decision("list_files", {})])
+    monkeypatch.setattr(dispatcher, "execute", lambda _action: observation)
+
+    result = loop.run(RunRequest(root, "inspect", "https://example.test/v1", "mock"))
+
+    assert result.stop_reason == "internal_error"
+    assert result.rollback_complete is True
+
+
+@pytest.mark.parametrize(
+    "test_result",
+    [
+        HarnessOutcome(True, 1, "", "", 0.01),
+        HarnessOutcome(False, 0, "", "", 0.01),
+        HarnessOutcome("yes", 0, "", "", 0.01),  # type: ignore[arg-type]
+        HarnessOutcome(True, 0, "", "", 0.01, timed_out=True),
+        HarnessOutcome(True, 0, "", "", 0.01, failed_tests=("test_x.py::test_x",)),
+        ExplodingBoundary(),
+    ],
+)
+def test_malformed_test_result_never_opens_finish_gate(tmp_path: Path, test_result: object) -> None:
+    class FixedTestRunner:
+        def run(self, workspace: Path | Workspace) -> HarnessOutcome:
+            return test_result  # type: ignore[return-value]
+
+    root = tmp_path / "project"
+    root.mkdir()
+    decisions = [
+        tool_decision("create_file", {"path": "created.py", "content": "value = 1\n"}),
+        tool_decision("finish", {"reason": "done"}),
+    ]
+    loop, _, _, _ = make_loop(root, decisions, test_runner=FixedTestRunner())
+
+    result = loop.run(RunRequest(root, "add value", "https://example.test/v1", "mock"))
+
+    assert result.stop_reason == "internal_error"
+    assert result.rollback_complete is True
+    assert not (root / "created.py").exists()
 
 
 def test_failed_verification_drives_correction_and_gates_finish(tmp_path: Path) -> None:
@@ -566,8 +827,9 @@ def test_incomplete_rollback_returns_exit_three_and_recovery_path(
     assert result.recovery_path.is_dir()
 
 
-def test_application_injects_one_known_secrets_tuple_and_run_id(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("api_retries", [1, 2])
+def test_application_injects_known_secrets_run_id_and_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, api_retries: int
 ) -> None:
     """Catches app wiring divergent secret sets or recovery/run identifiers."""
     root = tmp_path / "project"
@@ -597,7 +859,15 @@ def test_application_injects_one_known_secrets_tuple_and_run_id(
         recovery_root_factory=recovery_root,
     )
 
-    result = service.run(RunRequest(root, "inspect", "https://example.test/v1", "model-name"))
+    result = service.run(
+        RunRequest(
+            root,
+            "inspect",
+            "https://example.test/v1",
+            "model-name",
+            config_overrides={"api_retries": api_retries},
+        )
+    )
 
     assert result.status is RunStatus.COMPLETED
     assert factory.calls == [
@@ -605,6 +875,7 @@ def test_application_injects_one_known_secrets_tuple_and_run_id(
             "base_url": "https://example.test/v1",
             "model": "model-name",
             "api_key": runtime_key,
+            "max_retries": api_retries,
         }
     ]
     runner_secrets = captured["test_runner"]._known_secrets  # type: ignore[attr-defined]
@@ -660,14 +931,23 @@ def test_application_saves_only_fixed_success_memory_summary(tmp_path: Path) -> 
     assert str(root) not in serialized
 
 
-def test_application_near_limit_pytest_output_reaches_next_decision(tmp_path: Path) -> None:
+def test_application_control_character_tail_reaches_next_decision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Catches default feedback tail exhausting the total ContextBuilder budget."""
     root = tmp_path / "project"
     root.mkdir()
     marker = "PYTEST-TAIL-MARKER"
-    (root / "test_loud.py").write_bytes(
-        (f"def test_loud():\n    print('x' * 11_000 + '{marker}')\n    assert False\n").encode()
-    )
+    captured_tail_chars: list[int] = []
+
+    class ControlledTestRunner:
+        def __init__(self, config: HarnessConfig, *, known_secrets: tuple[str, ...]) -> None:
+            captured_tail_chars.append(config.output_tail_chars)
+
+        def run(self, workspace: Path | Workspace) -> HarnessOutcome:
+            return HarnessOutcome(False, 1, "\0" * 3_990 + marker, "", 0.01)
+
+    monkeypatch.setattr(app_module, "TestRunner", ControlledTestRunner)
     factory = RecordingLLMFactory(
         [
             tool_decision("create_file", {"path": "created.py", "content": "value = 1\n"}),
@@ -693,9 +973,200 @@ def test_application_near_limit_pytest_output_reaches_next_decision(tmp_path: Pa
     )
 
     assert result.stop_reason == "max_rounds"
+    assert captured_tail_chars == [2_000]
     assert len(factory.clients[0].calls) == 2
     second_context = json.dumps(factory.clients[0].calls[1].messages, ensure_ascii=False)
     assert marker in second_context
+
+
+def test_application_validates_workspace_before_credentials_factory_or_recovery(
+    tmp_path: Path,
+) -> None:
+    credential = FixedCredentialStore(runtime_api_key())
+    factory = RecordingLLMFactory([])
+    recovery_calls: list[str] = []
+    service = ApplicationService(
+        credential_store=credential,
+        llm_factory=factory,
+        event_sink=RecordingEventSink(),
+        approval_provider=FixedApprovalProvider(True),
+        recovery_root_factory=lambda run_id: (
+            recovery_calls.append(run_id) or tmp_path / "recovery" / run_id
+        ),
+    )
+
+    with pytest.raises(InputError, match="workspace root"):
+        service.run(
+            RunRequest(
+                tmp_path / "missing",
+                "inspect",
+                "https://example.test/v1",
+                "model-name",
+            )
+        )
+
+    assert credential.get_calls == 0
+    assert factory.calls == []
+    assert recovery_calls == []
+    assert not (tmp_path / "recovery").exists()
+
+
+def test_memory_load_interrupt_happens_before_transaction_creation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    recovery_calls: list[str] = []
+
+    class InterruptingMemoryStore:
+        def __init__(self, path: Path | None, *, enabled: bool) -> None:
+            pass
+
+        def load(self) -> object:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(app_module, "JsonProjectMemoryStore", InterruptingMemoryStore)
+    service = ApplicationService(
+        credential_store=FixedCredentialStore(runtime_api_key()),
+        llm_factory=RecordingLLMFactory([]),
+        event_sink=RecordingEventSink(),
+        approval_provider=FixedApprovalProvider(True),
+        recovery_root_factory=lambda run_id: (
+            recovery_calls.append(run_id) or tmp_path / "recovery" / run_id
+        ),
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        service.run(RunRequest(root, "inspect", "https://example.test/v1", "model-name"))
+
+    assert recovery_calls == []
+    assert tuple(root.iterdir()) == ()
+
+
+def test_memory_save_interrupt_cannot_change_committed_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    (root / "test_ok.py").write_bytes(b"def test_ok():\n    assert True\n")
+
+    class InterruptingMemoryStore:
+        def __init__(self, path: Path | None, *, enabled: bool) -> None:
+            pass
+
+        def load(self) -> None:
+            return None
+
+        def save_success(self, summary: str) -> None:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(app_module, "JsonProjectMemoryStore", InterruptingMemoryStore)
+    service = ApplicationService(
+        credential_store=FixedCredentialStore(runtime_api_key()),
+        llm_factory=RecordingLLMFactory(
+            [
+                tool_decision("create_file", {"path": "created.py", "content": "x = 1\n"}),
+                tool_decision("finish", {"reason": "done"}),
+            ]
+        ),
+        event_sink=RecordingEventSink(),
+        approval_provider=FixedApprovalProvider(True),
+        recovery_root_factory=lambda run_id: tmp_path / "recovery" / run_id,
+    )
+
+    result = service.run(RunRequest(root, "add", "https://example.test/v1", "model-name"))
+
+    assert result.status is RunStatus.COMPLETED
+    assert (root / "created.py").exists()
+
+
+@pytest.mark.parametrize("outcome", ["success", "rollback"])
+def test_application_removes_new_empty_per_run_recovery_directory(
+    tmp_path: Path, outcome: str
+) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    if outcome == "success":
+        (root / "test_ok.py").write_bytes(b"def test_ok():\n    assert True\n")
+        decisions = [
+            tool_decision("create_file", {"path": "created.py", "content": "x = 1\n"}),
+            tool_decision("finish", {"reason": "done"}),
+        ]
+    else:
+        decisions = [RawDecision(())] * 3
+    run_paths: list[Path] = []
+
+    def recovery_root(run_id: str) -> Path:
+        path = tmp_path / "recovery" / run_id
+        run_paths.append(path)
+        return path
+
+    service = ApplicationService(
+        credential_store=FixedCredentialStore(runtime_api_key()),
+        llm_factory=RecordingLLMFactory(decisions),
+        event_sink=RecordingEventSink(),
+        approval_provider=FixedApprovalProvider(True),
+        recovery_root_factory=recovery_root,
+    )
+
+    result = service.run(RunRequest(root, "run", "https://example.test/v1", "model-name"))
+
+    assert result.rollback_complete is True
+    assert len(run_paths) == 1
+    assert not run_paths[0].exists()
+
+
+def test_application_never_removes_preexisting_recovery_directory(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    recovery = tmp_path / "recovery" / "existing"
+    recovery.mkdir(parents=True)
+    service = ApplicationService(
+        credential_store=FixedCredentialStore(runtime_api_key()),
+        llm_factory=RecordingLLMFactory([RawDecision(())] * 3),
+        event_sink=RecordingEventSink(),
+        approval_provider=FixedApprovalProvider(True),
+        recovery_root_factory=lambda _run_id: recovery,
+    )
+
+    result = service.run(RunRequest(root, "run", "https://example.test/v1", "model-name"))
+
+    assert result.rollback_complete is True
+    assert recovery.is_dir()
+
+
+def test_application_retains_incomplete_recovery_material(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    recovery_paths: list[Path] = []
+
+    class IncompleteTransaction(FileTransaction):
+        def rollback(self) -> RollbackReport:
+            material = self._recovery_root / "manual-recovery.txt"
+            material.write_text("retain", encoding="utf-8")
+            return RollbackReport(False, recovery_root=self._recovery_root)
+
+    monkeypatch.setattr(app_module, "FileTransaction", IncompleteTransaction)
+
+    def recovery_root(run_id: str) -> Path:
+        path = tmp_path / "recovery" / run_id
+        recovery_paths.append(path)
+        return path
+
+    service = ApplicationService(
+        credential_store=FixedCredentialStore(runtime_api_key()),
+        llm_factory=RecordingLLMFactory([RawDecision(())] * 3),
+        event_sink=RecordingEventSink(),
+        approval_provider=FixedApprovalProvider(True),
+        recovery_root_factory=recovery_root,
+    )
+
+    result = service.run(RunRequest(root, "run", "https://example.test/v1", "model-name"))
+
+    assert result.status is RunStatus.ROLLBACK_INCOMPLETE
+    assert (recovery_paths[0] / "manual-recovery.txt").read_text(encoding="utf-8") == "retain"
 
 
 def test_application_failure_does_not_replace_existing_memory(tmp_path: Path) -> None:

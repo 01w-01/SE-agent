@@ -820,6 +820,55 @@ def test_openai_factory_uses_no_sdk_retries_and_wrapper_does_not_store_key(
     assert client.decide([], []).tool_calls == (RawToolCall("list_files", "{}"),)
 
 
+@pytest.mark.parametrize(("max_retries", "attempts"), [(0, 1), (1, 2), (2, 3)])
+def test_openai_factory_per_call_retry_override_covers_single_wrapper(
+    monkeypatch: pytest.MonkeyPatch, max_retries: int, attempts: int
+) -> None:
+    sdk = _FakeSDK([_HTTPFailure(500)] * attempts)
+    monkeypatch.setattr("fbw_harness.llm.OpenAI", lambda **_kwargs: sdk)
+    client = OpenAIClientFactory(max_retries=2).create(
+        base_url="https://school.example/v1",
+        model="model",
+        api_key=_synthetic_api_key("per-call-retry"),
+        max_retries=max_retries,
+    )
+
+    with pytest.raises(LLMDecisionError):
+        client.decide([], [])
+
+    assert len(sdk.chat.completions.calls) == attempts
+
+
+def test_openai_factory_omitted_retry_uses_constructor_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sdk = _FakeSDK([_HTTPFailure(500), _HTTPFailure(500)])
+    monkeypatch.setattr("fbw_harness.llm.OpenAI", lambda **_kwargs: sdk)
+    client = OpenAIClientFactory(max_retries=1).create(
+        base_url="https://school.example/v1",
+        model="model",
+        api_key=_synthetic_api_key("factory-default-retry"),
+    )
+
+    with pytest.raises(LLMDecisionError):
+        client.decide([], [])
+
+    assert len(sdk.chat.completions.calls) == 2
+
+
+@pytest.mark.parametrize("max_retries", [-1, 3, True, "1"])
+def test_openai_factory_rejects_invalid_per_call_retry_override(
+    max_retries: object,
+) -> None:
+    with pytest.raises(ValueError, match="max_retries"):
+        OpenAIClientFactory().create(
+            base_url="https://school.example/v1",
+            model="model",
+            api_key=_synthetic_api_key("invalid-retry"),
+            max_retries=max_retries,  # type: ignore[arg-type]
+        )
+
+
 def test_scripted_mock_returns_immutable_script_in_order_then_exhausts() -> None:
     first = RawDecision((RawToolCall("list_files", "{}"),))
     second = RawDecision((RawToolCall("finish", '{"reason":"done"}'),))

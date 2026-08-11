@@ -81,6 +81,12 @@ def _validate_field_name(name: str, source: str) -> None:
 
 
 def _validate_value(name: str, value: object, source: str) -> object:
+    if name == "api_retries":
+        if type(value) is not int or not 1 <= value <= 2:
+            raise InputError(
+                f"{source} configuration field api_retries must be between one and two"
+            )
+        return value
     if name in _INTEGER_FIELDS:
         if type(value) is not int or value <= 0:
             raise InputError(f"{source} configuration field {name} must be a positive integer")
@@ -107,5 +113,7 @@ def _validate_pytest_args(value: object, source: str) -> tuple[str, ...]:
         if argument.startswith(("@", "--rootdir", "-c")) or any(
             character in argument for character in _UNSAFE_PYTEST_ARGUMENT_CHARS
         ):
-            raise InputError(f"{source} configuration field pytest_args contains an unsafe argument")
+            raise InputError(
+                f"{source} configuration field pytest_args contains an unsafe argument"
+            )
     return tuple(value)
