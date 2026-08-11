@@ -6,6 +6,7 @@ import re
 import stat
 import tempfile
 import warnings
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -17,13 +18,35 @@ _TEXT_FIELDS = frozenset({"project_notes", "last_success_summary"})
 _MAX_TEXT_CHARS = 2_000
 _MAX_FILE_BYTES = 128 * 1024
 _CORRUPT_MEMORY_WARNING = "Project memory was ignored because its file was invalid."
-_SECRET_FIELD_PATTERN = (
-    r"(?i)(?:api[_-]?key|access[_-]?key(?:[_-]?id)?|access[_-]?token|"
-    r"authorization|bearer|client[_-]?secret|credential|file[_-]?content|"
-    r"password|private[_-]?key|refresh[_-]?token|secret|token)\s*[:=]"
+_SECRET_NAME_PATTERN = (
+    r"(?:api[\s._-]*key|access[\s._-]*key(?:[\s._-]*id)?|"
+    r"access[\s._-]*token|authorization|bearer|client[\s._-]*secret|"
+    r"credential|file[\s._-]*content|password|private[\s._-]*key|"
+    r"refresh[\s._-]*token|secret|token)"
 )
-_SECRET_FIELD_RE = re.compile(_SECRET_FIELD_PATTERN)
+_SECRET_FIELD_RE = re.compile(rf"(?i)[\"']?\s*{_SECRET_NAME_PATTERN}[\"']?\s*[:=]")
 _UTC_TIMESTAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z\Z")
+
+_MISSING = "missing"
+_VALID = "valid"
+_QUARANTINED = "quarantined"
+_UNREADABLE = "unreadable"
+_UNSAFE = "unsafe"
+
+
+class _MemoryTooLarge(Exception):
+    pass
+
+
+class _MemoryUnreadable(Exception):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class _LoadOutcome:
+    status: str
+    memory: ProjectMemory | None = None
+    notify: bool = False
 
 
 class JsonProjectMemoryStore:
@@ -34,32 +57,22 @@ class JsonProjectMemoryStore:
         self._enabled = type(enabled) is bool and enabled
 
     def load(self) -> ProjectMemory | None:
-        if not self._ready():
-            return None
-        path = self._path
-        assert path is not None
-        state = _target_state(path)
-        if state != "regular":
-            return None
-        try:
-            raw = _read_bytes(path)
-        except (OSError, ValueError):
-            return None
-        try:
-            payload = json.loads(raw.decode("utf-8"), object_pairs_hook=_pairs)
-            return _parse_memory(payload)
-        except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError, RecursionError):
-            _isolate_corrupt(path)
+        outcome = self._load_internal()
+        if outcome.notify:
             _notify_corrupt_memory()
-            return None
+        return outcome.memory
 
     def save_success(self, summary: str) -> None:
         if not self._ready() or not _safe_text(summary):
             return
         path = self._path
         assert path is not None
-        existing = self.load()
-        project_notes = existing.project_notes if existing is not None else ""
+        outcome = self._load_internal()
+        if outcome.notify:
+            _notify_corrupt_memory()
+        if outcome.status not in {_MISSING, _VALID, _QUARANTINED}:
+            return
+        project_notes = outcome.memory.project_notes if outcome.memory is not None else ""
         payload = {
             "version": 1,
             "project_notes": project_notes,
@@ -77,11 +90,34 @@ class JsonProjectMemoryStore:
             return
         try:
             path.unlink()
-        except OSError:
+        except (OSError, TypeError, ValueError):
             return
 
     def _ready(self) -> bool:
         return self._enabled and self._path is not None and _path_is_safe(self._path)
+
+    def _load_internal(self) -> _LoadOutcome:
+        if not self._ready():
+            return _LoadOutcome(_UNSAFE)
+        path = self._path
+        assert path is not None
+        state = _target_state(path)
+        if state == "missing":
+            return _LoadOutcome(_MISSING)
+        if state != "regular":
+            return _LoadOutcome(_UNSAFE)
+        try:
+            raw = _read_bytes(path)
+        except _MemoryTooLarge:
+            return _corrupt_outcome(path)
+        except (_MemoryUnreadable, OSError, ValueError):
+            return _LoadOutcome(_UNREADABLE)
+        try:
+            payload = json.loads(raw.decode("utf-8"), object_pairs_hook=_pairs)
+            memory = _parse_memory(payload)
+        except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError, RecursionError):
+            return _corrupt_outcome(path)
+        return _LoadOutcome(_VALID, memory)
 
 
 def _pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -144,23 +180,35 @@ def _notify_corrupt_memory() -> None:
         return
 
 
+def _corrupt_outcome(path: Path) -> _LoadOutcome:
+    try:
+        quarantined = _isolate_corrupt(path)
+    except (OSError, TypeError, ValueError):
+        quarantined = False
+    status = _QUARANTINED if quarantined else _UNREADABLE
+    return _LoadOutcome(status, notify=True)
+
+
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _read_bytes(path: Path) -> bytes:
     if not _path_is_safe(path) or _target_state(path) != "regular":
-        raise ValueError("memory target changed before reading")
-    with path.open("rb") as stream:
-        metadata = os.fstat(stream.fileno())
-        _validate_regular_metadata(metadata)
-        raw = stream.read(_MAX_FILE_BYTES + 1)
-        after = os.fstat(stream.fileno())
+        raise _MemoryUnreadable
+    try:
+        with path.open("rb") as stream:
+            metadata = os.fstat(stream.fileno())
+            _validate_regular_metadata(metadata)
+            raw = stream.read(_MAX_FILE_BYTES + 1)
+            after = os.fstat(stream.fileno())
+    except (OSError, ValueError):
+        raise _MemoryUnreadable from None
     _validate_regular_metadata(after)
     if len(raw) > _MAX_FILE_BYTES:
-        raise ValueError("memory file is too large")
+        raise _MemoryTooLarge
     if metadata.st_size != after.st_size or metadata.st_mtime_ns != after.st_mtime_ns:
-        raise ValueError("memory file changed while reading")
+        raise _MemoryUnreadable
     return raw
 
 
@@ -197,13 +245,13 @@ def _target_state(path: Path) -> str:
     try:
         metadata = os.lstat(path)
     except FileNotFoundError:
-        return "missing"
-    except OSError:
-        return "unsafe"
+        return _MISSING
+    except (OSError, TypeError, ValueError):
+        return _UNSAFE
     try:
         _validate_regular_metadata(metadata)
     except ValueError:
-        return "unsafe"
+        return _UNSAFE
     return "regular"
 
 
@@ -231,7 +279,7 @@ def _path_is_safe(path: Path) -> bool:
                 return True
             current = current.parent
             continue
-        except OSError:
+        except (OSError, TypeError, ValueError):
             return False
         if _is_reparse(metadata):
             return False
@@ -272,9 +320,9 @@ def _protected_name(name: str) -> bool:
     return canonical in protected or canonical.startswith(".env") or canonical.endswith(".egg-info")
 
 
-def _isolate_corrupt(path: Path) -> None:
+def _isolate_corrupt(path: Path) -> bool:
     if not _path_is_safe(path) or _target_state(path) != "regular":
-        return
+        return False
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     for index in range(1_000):
         suffix = f"-{index}" if index else ""
@@ -289,19 +337,21 @@ def _isolate_corrupt(path: Path) -> None:
             except FileNotFoundError:
                 pass
             except OSError:
-                return
+                return False
             else:
                 continue
             try:
                 os.rename(path, candidate)
             except OSError:
-                return
-            return
+                return False
+            return True
         try:
             path.unlink()
-        except OSError:
+        except (OSError, ValueError):
             try:
                 candidate.unlink()
-            except OSError:
+            except (OSError, ValueError):
                 pass
-        return
+            return False
+        return True
+    return False
