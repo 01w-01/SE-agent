@@ -354,6 +354,7 @@
 - TDD：真实 TestRunner 回归固定源码 mtime 并进行等长 `wrong`→`right` 改写；旧实现稳定 RED（第二次仍失败），最小隔离实现后 GREEN，且工作区无 `__pycache__`。
 - 验证：TestRunner/feedback `235 passed, 1 skipped`；feedback demo 连续 10 轮、20 项全部通过；全量 `751 passed, 1 skipped in 198.98s`；Ruff、两个改动文件 format、三项 demo、当前树扫描及 diff check 全部通过。
 - 权衡：独立空缓存使全量耗时增加，单次 feedback 约 14–16 秒，仍低于固定 60 秒 pytest 超时；未扩大安全边界或修改用户项目缓存。
+- 分支已推送；hotfix PR：[PR #16](https://github.com/01w-01/SE-agent/pull/16)。
 
 ## 3. 当前关键决定
 

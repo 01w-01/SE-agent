@@ -1668,7 +1668,7 @@ git commit -m "docs: 记录最终验收证据"
 
 PR #14/#15 的 branch push 检查曾间歇失败，而同提交 PR 或 main 检查通过。失败均发生在 feedback demo：错误版与修正版 `clamp.py` 大小相同、修改间隔很短，第二次 pytest 可能复用第一次生成的陈旧 `.pyc`，导致修正后仍失败并在下一轮耗尽 Mock LLM。
 
-采用已批准设计：每次 `TestRunner.run()` 为 pytest 子进程设置唯一的临时 `PYTHONPYCACHEPREFIX`，结束后清理；不删除或遍历用户工作区的 `__pycache__`，不改变公开接口。真实回归通过同尺寸改写并恢复相同 mtime 稳定复现旧实现 RED，最小实现后 GREEN。门禁为 TestRunner/feedback `235 passed, 1 skipped`、feedback 连续 10 轮共 20 项通过、全量 `751 passed, 1 skipped`，Ruff、两个白名单文件 format、三项 demo、当前树扫描和 diff check 均通过。代价是全量测试增至约 199 秒，单次 feedback 仍低于 60 秒 pytest 超时。
+采用已批准设计：每次 `TestRunner.run()` 为 pytest 子进程设置唯一的临时 `PYTHONPYCACHEPREFIX`，结束后清理；不删除或遍历用户工作区的 `__pycache__`，不改变公开接口。真实回归通过同尺寸改写并恢复相同 mtime 稳定复现旧实现 RED，最小实现后 GREEN。门禁为 TestRunner/feedback `235 passed, 1 skipped`、feedback 连续 10 轮共 20 项通过、全量 `751 passed, 1 skipped`，Ruff、两个白名单文件 format、三项 demo、当前树扫描和 diff check 均通过。代价是全量测试增至约 199 秒，单次 feedback 仍低于 60 秒 pytest 超时。集成见 [PR #16](https://github.com/01w-01/SE-agent/pull/16)。
 
 ---
 
