@@ -343,6 +343,7 @@
 - 历史门禁：`scripts/scan-history.ps1` 按预期退出 `1`，仅输出 commit/path 元数据（34 行、18 个 commit、4 个路径，包含 `77da924`），没有回显匹配内容；未改写历史。当前树扫描退出 `0`。
 - 发布裁决：真实 API、干净新机、GitLab CI、历史零凭据与 WebUI 门禁未满足，项目当前不可发布；没有创建 tag、Release 或 `REFLECTION.md`。完整证据见 `docs/evidence/release-checklist.md` 与 `docs/evidence/ci-last-pass.md`。
 - 唯一只读 task review 检查 `cd2b0ef..8e8f14c`：SPEC/PLAN、白名单、证据真实性、凭据卫生和发布裁决均通过，0 Critical、0 Important、0 Minor，文档 `Ready to merge: Yes`；reviewer 同时确认产品仍为 `NOT RELEASABLE`。无修复项，不进行第二次 re-review。
+- 分支已推送；最终证据 PR：[PR #15](https://github.com/01w-01/SE-agent/pull/15)。该 PR 只集成验收与阻塞证据，不创建 tag 或 Release。
 
 ## 3. 当前关键决定
 
