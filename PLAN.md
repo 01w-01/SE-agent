@@ -1662,7 +1662,7 @@ git add -- README.md PLAN.md AGENT_LOG.md docs/evidence
 git commit -m "docs: 记录最终验收证据"
 ```
 
-**实现记录（2026-08-11）：** 本提交更新 README、PLAN、AGENT_LOG 与 `docs/evidence`，如实记录当前不可发布状态；没有创建 `REFLECTION.md`、tag 或 Release，PR/合并与外部 CI 仍待控制器处理。
+**实现记录（2026-08-11）：** 本提交更新 README、PLAN、AGENT_LOG 与 `docs/evidence`，如实记录当前不可发布状态；没有创建 `REFLECTION.md`、tag 或 Release。最终证据集成见 [PR #15](https://github.com/01w-01/SE-agent/pull/15)；外部 CI 与其他发布阻塞仍保持未完成。
 
 ---
 
