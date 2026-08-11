@@ -1215,7 +1215,7 @@ diff check 通过；独立 review 为 0 Critical / 0 Important；集成见
 - Consumes: `HarnessConfig.memory_enabled/memory_path`、`ProjectMemory`、`RunResult`。
 - Produces: `JsonProjectMemoryStore.load() -> ProjectMemory | None`、`save_success(summary)`、`clear()`。
 
-- [ ] **Step 1: 写默认关闭、白名单和损坏隔离失败测试**
+- [x] **Step 1: 写默认关闭、白名单和损坏隔离失败测试**
 
 ```python
 def test_disabled_memory_never_reads_or_writes(tmp_path: Path) -> None:
@@ -1232,21 +1232,21 @@ def test_memory_rejects_secret_and_full_file_fields(tmp_path: Path) -> None:
     assert list(tmp_path.glob("memory.json.corrupt-*"))
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `uv run --project mini-harness pytest mini-harness/tests/test_memory.py -v`
 
 Expected: FAIL because memory store is absent.
 
-- [ ] **Step 3: 实现版本化 schema 和原子写入**
+- [x] **Step 3: 实现版本化 schema 和原子写入**
 
 JSON 只允许 `version`、`project_notes`、`last_success_summary`、`updated_at`；未知或禁止字段使文件移动为带 UTC 时间戳的 `.corrupt-*`，并返回无记忆运行。写入使用同目录临时文件和 `os.replace`。
 
-- [ ] **Step 4: 验证按需注入与长度限制**
+- [x] **Step 4: 验证按需注入与长度限制**
 
 项目说明和成功摘要分别限制 2,000 字符；失败运行不得写记忆；ContextBuilder 仅在 enabled 且 load 成功时注入。
 
-- [ ] **Step 5: 全量验证并提交**
+- [x] **Step 5: 全量验证并提交**
 
 Run: `uv run --project mini-harness pytest mini-harness/tests/test_memory.py -v`
 
@@ -1256,6 +1256,15 @@ Run: `uv run --project mini-harness pytest -q`
 git add -- mini-harness/src/fbw_harness/memory.py mini-harness/tests/test_memory.py
 git commit -m "feat: 添加受控项目记忆"
 ```
+
+**实现记录（2026-08-11）：** 首版 `c1befd5`；task review fix 提交
+`de99cac`、`44c8f12`，补齐固定损坏提示、UTC 时间、静态 reparse 覆盖和
+warning-as-error 回退；最终累计 review fix `5eeb08a` 补齐 quoted JSON/TOML/env
+秘密字段、读取状态区分与畸形路径安全失败。控制器最终验证 Task 10 `32 passed`、
+全量 `643 passed, 1 skipped`，Ruff、format、秘密扫描和累计 diff check 通过；
+最终 review 为 Ready to merge。Task 11 负责只在成功运行后调用 `save_success()`，
+并仅在 enabled 且 `load()` 成功时把记忆注入 ContextBuilder。集成见
+[PR #10](https://github.com/01w-01/SE-agent/pull/10)。
 
 ---
 
