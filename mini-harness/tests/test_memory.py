@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
+import re
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from fbw_harness.memory import JsonProjectMemoryStore
 
@@ -19,7 +24,10 @@ def test_memory_rejects_secret_and_full_file_fields(tmp_path: Path) -> None:
     path = tmp_path / "memory.json"
     path.write_text('{"version":1,"api_key":"value"}', encoding="utf-8")
 
-    assert JsonProjectMemoryStore(path, enabled=True).load() is None
+    with pytest.warns(
+        RuntimeWarning, match=re.escape("Project memory was ignored because its file was invalid.")
+    ):
+        assert JsonProjectMemoryStore(path, enabled=True).load() is None
     assert list(tmp_path.glob("memory.json.corrupt-*"))
 
 
@@ -74,8 +82,47 @@ def test_invalid_utf8_memory_is_isolated(tmp_path: Path) -> None:
     path = tmp_path / "memory.json"
     path.write_bytes(b"{\xff")
 
-    assert JsonProjectMemoryStore(path, enabled=True).load() is None
+    with pytest.warns(
+        RuntimeWarning, match=re.escape("Project memory was ignored because its file was invalid.")
+    ):
+        assert JsonProjectMemoryStore(path, enabled=True).load() is None
     assert not path.exists()
+    assert list(tmp_path.glob("memory.json.corrupt-*"))
+
+
+def test_corrupt_memory_warning_is_fixed_and_contains_no_path(tmp_path: Path) -> None:
+    path = tmp_path / "memory.json"
+    path.write_text('{"version":1,"unexpected":"secret-value"}', encoding="utf-8")
+
+    with pytest.warns(RuntimeWarning) as captured:
+        assert JsonProjectMemoryStore(path, enabled=True).load() is None
+
+    assert len(captured) == 1
+    assert str(captured[0].message) == "Project memory was ignored because its file was invalid."
+    assert str(path) not in str(captured[0].message)
+    assert "secret-value" not in str(captured[0].message)
+
+
+@pytest.mark.parametrize(
+    "updated_at",
+    ["2026-01-01", "2026-01-01T00:00:00", "2026-01-01T00:00:00+00:00", "2026-02-30T00:00:00Z"],
+)
+def test_memory_rejects_non_utc_z_timestamps(tmp_path: Path, updated_at: str) -> None:
+    path = tmp_path / "memory.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "project_notes": "",
+                "last_success_summary": "passed",
+                "updated_at": updated_at,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.warns(RuntimeWarning):
+        assert JsonProjectMemoryStore(path, enabled=True).load() is None
     assert list(tmp_path.glob("memory.json.corrupt-*"))
 
 
@@ -108,8 +155,48 @@ def test_memory_does_not_follow_a_symlinked_parent(tmp_path: Path) -> None:
     try:
         link.symlink_to(target, target_is_directory=True)
     except (OSError, NotImplementedError):
-        return
+        pytest.skip("symbolic links are unavailable on this platform")
 
     JsonProjectMemoryStore(link / "memory.json", enabled=True).save_success("passed")
+
+    assert not (target / "memory.json").exists()
+
+
+def test_memory_rejects_a_symlinked_target(tmp_path: Path) -> None:
+    target = tmp_path / "actual.json"
+    target.write_text("do not replace", encoding="utf-8")
+    link = tmp_path / "memory.json"
+    try:
+        link.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("symbolic links are unavailable on this platform")
+
+    store = JsonProjectMemoryStore(link, enabled=True)
+    assert store.load() is None
+    store.save_success("passed")
+    store.clear()
+
+    assert target.read_text(encoding="utf-8") == "do not replace"
+    assert link.is_symlink()
+
+
+def test_memory_rejects_a_windows_junction_parent(tmp_path: Path) -> None:
+    if os.name != "nt":
+        pytest.skip("Windows junctions are unavailable on this platform")
+    target = tmp_path / "actual"
+    target.mkdir()
+    junction = tmp_path / "junction"
+    result = subprocess.run(
+        ["cmd.exe", "/d", "/c", "mklink", "/J", str(junction), str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        pytest.skip("Windows junction creation is unavailable")
+
+    store = JsonProjectMemoryStore(junction / "memory.json", enabled=True)
+    assert store.load() is None
+    store.save_success("passed")
 
     assert not (target / "memory.json").exists()
