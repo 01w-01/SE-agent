@@ -1281,7 +1281,7 @@ warning-as-error 回退；最终累计 review fix `5eeb08a` 补齐 quoted JSON/T
 - Consumes: Tasks 2–10 的全部稳定接口。
 - Produces: `ToolDispatcher(workspace, transaction).execute(action) -> Observation`、`AgentLoop(llm, parser, context_builder, policy, dispatcher, test_runner, feedback_engine, event_sink, approval_provider, config).run(request) -> RunResult`、`ApplicationService.run(request) -> RunResult`。
 
-- [ ] **Step 1: 写完成门禁、反馈修正和无进展失败测试**
+- [x] **Step 1: 写完成门禁、反馈修正和无进展失败测试**
 
 ```python
 class RecordingEventSink:
@@ -1367,33 +1367,33 @@ def test_repeated_action_and_feedback_rolls_back(tmp_path: Path) -> None:
     assert (root / "clamp.py").read_text(encoding="utf-8") == initial
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `uv run --project mini-harness pytest mini-harness/tests/test_loop.py -v`
 
 Expected: FAIL because AgentLoop is absent.
 
-- [ ] **Step 3: 实现 ToolDispatcher 且治理先于工具**
+- [x] **Step 3: 实现 ToolDispatcher 且治理先于工具**
 
 分发 `list_files/read_file/create_file/edit_file/finish`；每次分发前必须已有 PolicyDecision。DENY 和未获批准的 CONFIRM 只产生 Feedback，工具调用计数保持不变。写操作委托 FileTransaction，禁止直接 `Path.write_text`。
 
-- [ ] **Step 4: 实现状态迁移和每轮一个动作**
+- [x] **Step 4: 实现状态迁移和每轮一个动作**
 
 严格按 `INITIALIZING -> REQUESTING_ACTION -> VALIDATING_ACTION -> WAITING_APPROVAL（仅 CONFIRM） -> EXECUTING -> VERIFYING（仅代码写入） -> FEEDBACK -> REQUESTING_ACTION / COMPLETED / FAILED / ROLLING_BACK`。解析、策略、工具和测试错误均转为结构化 Feedback；代码写入自动 VERIFYING；最近测试失败时 finish 形成反馈而不完成。
 
-- [ ] **Step 5: 实现所有停止和恢复路径**
+- [x] **Step 5: 实现所有停止和恢复路径**
 
 覆盖 success、max_rounds、no_progress、3 次格式错误、用户拒绝、中断、API 失败、pytest 超时、内部异常。成功 commit 事务；其他路径 rollback。回滚不完整返回 `RunStatus.ROLLBACK_INCOMPLETE` 和退出语义 `3`。
 
-- [ ] **Step 6: 实现 ApplicationService 组合边界**
+- [x] **Step 6: 实现 ApplicationService 组合边界**
 
 `ApplicationService` 校验 RunRequest、加载配置、读取 CredentialStore、由 LLMClientFactory 创建客户端、建立 Workspace/Transaction/Loop。每个状态通过 EventSink 发 RunEvent；审批只经 ApprovalProvider；核心不导入 CLI 模块。
 
-- [ ] **Step 7: Ctrl+C 与异常注入测试**
+- [x] **Step 7: Ctrl+C 与异常注入测试**
 
 直接向 loop 注入 `KeyboardInterrupt` 和工具异常，断言恢复调用、事件顺序、退出语义和恢复材料路径；事件 payload 不含 Key 或完整文件。
 
-- [ ] **Step 8: 全量验证并提交**
+- [x] **Step 8: 全量验证并提交**
 
 Run: `uv run --project mini-harness pytest mini-harness/tests/test_loop.py -v`
 
@@ -1405,6 +1405,10 @@ Run: `uv run --project mini-harness ruff check mini-harness/src mini-harness/tes
 git add -- mini-harness/src/fbw_harness/loop.py mini-harness/src/fbw_harness/app.py mini-harness/tests/test_loop.py
 git commit -m "feat: 实现 Agent 主循环"
 ```
+
+**实现记录（2026-08-11）：** Task 11 以 `e102edc`、`de4c48e`、`c654dc6` 完成 AgentLoop、ApplicationService、治理/审批、反馈闭环、终态与恢复路径。最终审查提出的有限 capability token 表被用户裁决为已知限制：它只提供 best-effort `CONFIRM` 提示，不是安全边界，不要求完备，也不继续扩表或重构。终态后的恢复目录清理另以 TDD 收口并提交 `4cd4cb4`，保证清理阶段的 `KeyboardInterrupt` 不推翻已确定的提交或完整回滚结果。正式安全边界统一为工作区路径围栏、动作级策略/HITL、逐文件事务与回滚；工作区代码由 pytest 以当前用户权限执行，明确不在安全边界内，见 SPEC R-12。最终门禁：定向 `227 passed`、全量 `729 passed, 1 skipped`、Ruff、8 文件 format、当前树秘密扫描和累计 diff check 均通过。
+
+**Task 12–14 审查约束（用户裁决）：** reviewer 必须按上述 SPEC 威胁模型审查。工作区内代码执行相关问题只记已知限制，不判实现缺陷；不要求任何 denylist 或模式表完备。Critical 仅限数据丢失、回滚失败、凭据泄漏和越界写入；其他问题按 Important 及以下记录为 TODO/已知限制且不阻断 PR。每个 task 最多一轮修复，不做第二轮复审。集成见 [PR #11](https://github.com/01w-01/SE-agent/pull/11)。
 
 ---
 

@@ -68,7 +68,17 @@ class OpenAIClientFactory:
             raise ValueError("max_retries must be between zero and two")
         self._max_retries = max_retries
 
-    def create(self, *, base_url: str, model: str, api_key: str) -> OpenAICompatibleClient:
+    def create(
+        self,
+        *,
+        base_url: str,
+        model: str,
+        api_key: str,
+        max_retries: int | None = None,
+    ) -> OpenAICompatibleClient:
+        selected_retries = self._max_retries if max_retries is None else max_retries
+        if type(selected_retries) is not int or not 0 <= selected_retries <= 2:
+            raise ValueError("max_retries must be between zero and two")
         try:
             client = OpenAI(base_url=base_url, api_key=api_key, max_retries=0)
         except Exception:  # noqa: BLE001 - factory must not leak a key-bearing SDK error.
@@ -80,7 +90,7 @@ class OpenAIClientFactory:
         return OpenAICompatibleClient(
             client=client,
             model=model,
-            max_retries=self._max_retries,
+            max_retries=selected_retries,
         )
 
 
