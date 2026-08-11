@@ -333,6 +333,18 @@
 - 历史扫描按用户已接受的临时 Key 风险真实退出 `1`，只输出 SHA 与路径；tag/Release 继续被阻断，没有改写历史或弱化门禁。
 - 分支已推送；PR：[PR #14](https://github.com/01w-01/SE-agent/pull/14)。
 
+### 2026-08-11 · P-033 · 正式 Task 14 最终验收与不可发布裁决
+
+- Superpowers 技能：`using-git-worktrees`（确认既有隔离工作树）、`executing-plans`、`requesting-code-review`、`verification-before-completion`；实现 agent 为 Codex Task 14 implementer，worktree `D:\Codes\FBW-worktrees\task-14`，分支 `task/14-final-evidence`，基线 `cd2b0ef`。
+- AI 执行证据：离线全量 `750 passed, 1 skipped`；Ruff、当前树扫描、三项 demo、完整 build 均退出 `0`；PyInstaller 6.22.0 / Python 3.13.13；当前开发机 exe `--help` 与 `demo all` 均退出 `0`，SHA-256 与校验文件一致，Authenticode 为 `NotSigned`。
+- 真实 API 人工/安全裁决：控制器允许使用用户先前提供的学校临时凭据，但本 agent 未获得人工隐藏输入；平台拒绝自动从 Git 历史提取并联网，命令未执行。遵循裁决不再读取、设置或联网，真实 API Step 2 保持 blocked；CredentialStore 最终 `configured=False`，临时 Python 项目已删除，没有凭据、请求、RunResult 或响应正文残留。
+- 控制器完成提交后新鲜复验：全量 `750 passed, 1 skipped`、Ruff、三项 demo、当前树扫描和 task diff check 通过；重新构建后 exe `--help`、`demo all`、SHA 校验通过，最新本机构建 SHA 已回写验收清单。全树 format-check 仍报告 4 个 Task 14 范围外既有文件会被重排，因此不在本 task 越界修改。
+- 外部门禁：本机是已有 Python/uv 的 Windows 11 开发机，不是干净新机；只有 GitHub `origin`，没有 GitLab remote/pipeline URL；没有课程方 WebUI 书面豁免。三项均不得以本地结果替代。
+- 历史门禁：`scripts/scan-history.ps1` 按预期退出 `1`，仅输出 commit/path 元数据（34 行、18 个 commit、4 个路径，包含 `77da924`），没有回显匹配内容；未改写历史。当前树扫描退出 `0`。
+- 发布裁决：真实 API、干净新机、GitLab CI、历史零凭据与 WebUI 门禁未满足，项目当前不可发布；没有创建 tag、Release 或 `REFLECTION.md`。完整证据见 `docs/evidence/release-checklist.md` 与 `docs/evidence/ci-last-pass.md`。
+- 唯一只读 task review 检查 `cd2b0ef..8e8f14c`：SPEC/PLAN、白名单、证据真实性、凭据卫生和发布裁决均通过，0 Critical、0 Important、0 Minor，文档 `Ready to merge: Yes`；reviewer 同时确认产品仍为 `NOT RELEASABLE`。无修复项，不进行第二次 re-review。
+- 分支已推送；最终证据 PR：[PR #15](https://github.com/01w-01/SE-agent/pull/15)。该 PR 只集成验收与阻塞证据，不创建 tag 或 Release。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |
