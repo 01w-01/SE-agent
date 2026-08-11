@@ -318,7 +318,7 @@
 - 唯一 fix round 1/1：先复现 ALLOW 策略下 dispatcher 调用两次而旧 demo 仍 PASS，再让结果来自真实 PolicyDecision/RunEvent/dispatcher 记录；同时实际运行 CLI 与 demo 组合根，证明同一 ApplicationService/AgentLoop、不同真实/Mock factory；提交 `4ab5134 fix: 强化演示机制验证`。按用户裁决不做第二轮复审。
 - 控制器最终门禁：Task 12 定向 `11 passed`、全量 `743 passed, 1 skipped`；CLI help、`demo all`、`scripts/demo.ps1`、Ruff、本任务 format、正式当前树秘密扫描和累计 diff check 全部通过。
 - 已知非阻断状态：全树 format 仍有 Task 12 白名单外的既有漂移，未跨任务修改；唯一 pytest skip 仍为 Windows 不适用的 POSIX killpg 分支。
-- PR：待创建后回写。
+- 分支已推送；PR：[PR #12](https://github.com/01w-01/SE-agent/pull/12)。
 
 ## 3. 当前关键决定
 
