@@ -284,6 +284,20 @@
 - 最终验证：Task 9 `113 passed`、全量 `611 passed, 1 skipped`、Ruff、format、当前树秘密扫描和累计 diff check 全部通过；唯一 skip 延续为 Windows 不适用的 POSIX killpg 分支。
 - 分支已推送；PR：[PR #9](https://github.com/01w-01/SE-agent/pull/9)。
 
+### 2026-08-11 · P-029 · 正式 Task 10 可选白名单项目记忆
+
+- 用户授权：知晓现有 Git 历史包含临时 API Key，仍明确授权推送到指定 GitHub 仓库并继续 PR；不改写历史，课程凭据冲突仍保留。
+- Superpowers 技能：`using-git-worktrees`、`subagent-driven-development`、`test-driven-development`、`systematic-debugging`、`receiving-code-review`、`requesting-code-review`、`verification-before-completion`。
+- worktree：`D:\Codes\FBW-worktrees\task-10`；分支 `task/10-project-memory`，基线 `0058ca8`，基线测试 `611 passed, 1 skipped`。
+- 首版：默认关闭的 `JsonProjectMemoryStore`、四字段 schema、2,000 字符上限、损坏隔离、同目录原子写与 clear，提交 `c1befd5 feat: 添加受控项目记忆`。
+- task review fix round 1：按既有路径式方案 B 补静态目标/父目录 symlink 与 Windows junction、固定损坏提示、严格 UTC；提交 `de99cac fix: 加固项目记忆边界`。同用户恶意并发替换作为 SPEC R-11 残余风险，不升级为句柄引擎。
+- task review fix round 2：保证 `RuntimeWarning` 被配置为 error 时仍返回无记忆运行；提交 `44c8f12 fix: 防止项目记忆警告阻断回退`。
+- 最终累计 review fix：修复 quoted JSON/TOML/env 秘密字段绕过、超限/不可读/隔离失败状态误覆盖和 NUL 路径异常；提交 `5eeb08a fix: 收紧项目记忆安全边界`。
+- 最终 review：三项累计 finding 全部 ADDRESSED，无新 Critical / Important；结论 Ready to merge。
+- 控制器最终验证：Task 10 `32 passed`、全量 `643 passed, 1 skipped`、Ruff、format、当前树秘密扫描和累计 diff check 全部通过；唯一 skip 延续为 Windows 不适用的 POSIX killpg 分支。
+- Task 11 继承：仅成功 RunResult 调用 `save_success()`；仅 enabled 且 `load()` 成功才注入 ContextBuilder；路径式 R-11 与固定安全提示必须保持。
+- 分支已推送；PR：[PR #10](https://github.com/01w-01/SE-agent/pull/10)。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |
