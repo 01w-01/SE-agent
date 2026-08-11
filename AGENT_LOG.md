@@ -272,6 +272,17 @@
 - 安全边界：输出在进入有界 tail 前脱敏；mapping 栈最多 64；TestRunner 的 `known_secrets` 是 required keyword-only，Task 11 必须把同一 tuple 同时传给 TestRunner 与 FeedbackEngine，并补集成测试。
 - 分支已推送；PR：[PR #8](https://github.com/01w-01/SE-agent/pull/8)。
 
+### 2026-08-10 · P-028 · 正式 Task 9 LLM 决策、解析与上下文
+
+- Superpowers 技能：`using-git-worktrees`、`subagent-driven-development`、`test-driven-development`、`systematic-debugging`、`receiving-code-review`、`requesting-code-review`、`verification-before-completion`。
+- worktree：`D:\Codes\FBW-worktrees\task-09`；分支 `task/09-llm-context`，基线 `d54ed9e`，基线测试 `498 passed, 1 skipped`。
+- 首版：实现严格 ActionParser、每次新建的固定工具 schema、OpenAI compatible 单次决策/瞬时重试、ScriptedMockLLM 深拷贝记录和预算 ContextBuilder；提交 `419c762 feat: 添加 LLM 决策与上下文构建`。
+- review fix round 1：修复测试秘密字面量、惰性 status/call/context 属性固定映射、Context 先限界再脱敏、100/100/100 数量和 path/hash 上限、最旧项完整淘汰与 schema 防污染；提交 `5d513d0 fix: 加固 LLM 与上下文边界`。
+- review fix round 2：为 SDK 与 custom/mock 决策统一增加 16 calls、64 name、4 MiB arguments、16,000 content 硬上限；提交 `53f29a8 fix: 限制 LLM 决策输出规模`。
+- review fix round 3：拒绝伪装 `__len__` 的 list/tuple/str 子类，在 len/iter/index/slice/encode 前 exact type fail-closed；提交 `80ca933 fix: 拒绝伪装的 LLM 响应类型`。
+- 最终 review：普通 SDK list/tuple、伪装容器/字符串、lazy function/name、16/17 calls、64/65 name、4 MiB/+1 arguments 和 content 截断均通过；Critical 0 / Important 0，ALL_ADDRESSED。
+- 最终验证：Task 9 `113 passed`、全量 `611 passed, 1 skipped`、Ruff、format、当前树秘密扫描和累计 diff check 全部通过；唯一 skip 延续为 Windows 不适用的 POSIX killpg 分支。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |
