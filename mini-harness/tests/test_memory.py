@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+import fbw_harness.memory as memory_module
 from fbw_harness.memory import JsonProjectMemoryStore
 
 
@@ -77,6 +78,117 @@ def test_invalid_success_summary_does_not_write(tmp_path: Path) -> None:
     assert not path.exists()
     store.save_success("api_key=do-not-save")
     assert not path.exists()
+
+
+@pytest.mark.parametrize(
+    "secret_text",
+    [
+        '{"api_key":"synthetic-value"}',
+        '{"file_content": "synthetic-value"}',
+        'api.key = "synthetic-value"',
+        "file-content='synthetic-value'",
+    ],
+)
+def test_secret_shaped_summary_is_not_persisted(tmp_path: Path, secret_text: str) -> None:
+    path = tmp_path / "memory.json"
+
+    JsonProjectMemoryStore(path, enabled=True).save_success(secret_text)
+
+    assert not path.exists()
+
+
+@pytest.mark.parametrize(
+    "secret_text",
+    [
+        '{"api_key":"synthetic-value"}',
+        '{"file_content": "synthetic-value"}',
+        'api.key = "synthetic-value"',
+        "file-content='synthetic-value'",
+    ],
+)
+def test_secret_shaped_project_notes_are_quarantined(tmp_path: Path, secret_text: str) -> None:
+    path = tmp_path / "memory.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "project_notes": secret_text,
+                "last_success_summary": "passed",
+                "updated_at": "2026-01-01T00:00:00Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.warns(RuntimeWarning):
+        assert JsonProjectMemoryStore(path, enabled=True).load() is None
+    assert list(tmp_path.glob("memory.json.corrupt-*"))
+
+
+def test_oversized_memory_is_quarantined_before_success_replaces_it(tmp_path: Path) -> None:
+    path = tmp_path / "memory.json"
+    path.write_bytes(b"x" * 131_073)
+    store = JsonProjectMemoryStore(path, enabled=True)
+
+    with pytest.warns(RuntimeWarning):
+        assert store.load() is None
+    assert not path.exists()
+    assert list(tmp_path.glob("memory.json.corrupt-*"))
+
+    store.save_success("passed")
+    assert store.load() is not None
+    assert store.load().last_success_summary == "passed"
+
+
+def test_failed_quarantine_never_allows_success_to_overwrite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "memory.json"
+    original = b"x" * 131_073
+    path.write_bytes(original)
+    monkeypatch.setattr(memory_module, "_isolate_corrupt", lambda _: False)
+
+    with pytest.warns(RuntimeWarning):
+        JsonProjectMemoryStore(path, enabled=True).save_success("passed")
+
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize("failure", [OSError("read failed"), ValueError("changed while reading")])
+def test_read_failure_never_allows_success_to_overwrite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: Exception
+) -> None:
+    path = tmp_path / "memory.json"
+    original = json.dumps(
+        {
+            "version": 1,
+            "project_notes": "keep",
+            "last_success_summary": "old",
+            "updated_at": "2026-01-01T00:00:00Z",
+        }
+    ).encode("utf-8")
+    path.write_bytes(original)
+
+    def fail_read(_: Path) -> bytes:
+        raise failure
+
+    monkeypatch.setattr(memory_module, "_read_bytes", fail_read)
+    JsonProjectMemoryStore(path, enabled=True).save_success("passed")
+
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize("operation", ["load", "save_success", "clear"])
+def test_public_memory_operations_reject_nul_paths_safely(tmp_path: Path, operation: str) -> None:
+    path = Path(f"{tmp_path / 'memory.json'}\x00")
+    store = JsonProjectMemoryStore(path, enabled=True)
+
+    if operation == "load":
+        assert store.load() is None
+    elif operation == "save_success":
+        store.save_success("passed")
+    else:
+        store.clear()
 
 
 def test_invalid_utf8_memory_is_isolated(tmp_path: Path) -> None:
