@@ -86,6 +86,36 @@ def test_runner_runs_real_pytest_in_workspace_and_accepts_workspace_object(tmp_p
     assert result.duration_seconds >= 0
 
 
+def test_runner_does_not_reuse_stale_bytecode_after_same_size_same_mtime_edit(
+    tmp_path: Path,
+) -> None:
+    # Break caught: a corrected same-size source reuses bytecode from the prior failed run.
+    project = tmp_path / "project"
+    project.mkdir()
+    module = project / "subject.py"
+    module.write_text("VALUE = 'wrong'\n", encoding="utf-8")
+    (project / "test_subject.py").write_text(
+        "from subject import VALUE\n\ndef test_value():\n    assert VALUE == 'right'\n",
+        encoding="utf-8",
+    )
+    original_stat = module.stat()
+    runner = HarnessTestRunner(
+        HarnessConfig(pytest_timeout_seconds=10, pytest_args=("-q",)),
+        known_secrets=(),
+    )
+
+    first = runner.run(project)
+    assert first.passed is False
+
+    module.write_text("VALUE = 'right'\n", encoding="utf-8")
+    os.utime(module, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+    second = runner.run(project)
+
+    assert second.passed is True
+    assert second.exit_code == 0
+    assert not (project / "__pycache__").exists()
+
+
 def test_runner_requires_known_secrets_as_keyword_only() -> None:
     with pytest.raises(TypeError):
         HarnessTestRunner(HarnessConfig())
