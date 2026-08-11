@@ -1116,6 +1116,59 @@ def test_application_removes_new_empty_per_run_recovery_directory(
     assert not run_paths[0].exists()
 
 
+@pytest.mark.parametrize(
+    ("outcome", "expected_status"),
+    [
+        ("success", RunStatus.COMPLETED),
+        ("rollback", RunStatus.FAILED),
+    ],
+)
+def test_recovery_cleanup_interrupt_cannot_change_final_run_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    outcome: str,
+    expected_status: RunStatus,
+) -> None:
+    """Catches optional recovery cleanup replacing a settled run result."""
+    root = tmp_path / "project"
+    root.mkdir()
+    (root / "test_existing.py").write_text("def test_ok():\n    assert True\n", encoding="utf-8")
+    if outcome == "success":
+        decisions = [
+            tool_decision("create_file", {"path": "created.py", "content": "x = 1\n"}),
+            tool_decision("finish", {"reason": "done"}),
+        ]
+    else:
+        decisions = [RawDecision(())] * 3
+    run_paths: list[Path] = []
+
+    def recovery_root(run_id: str) -> Path:
+        path = tmp_path / "recovery" / run_id
+        run_paths.append(path)
+        return path
+
+    original_rmdir = Path.rmdir
+
+    def interrupt_run_cleanup(path: Path) -> None:
+        if path in run_paths:
+            raise KeyboardInterrupt
+        original_rmdir(path)
+
+    monkeypatch.setattr(Path, "rmdir", interrupt_run_cleanup)
+    service = ApplicationService(
+        credential_store=FixedCredentialStore(runtime_api_key()),
+        llm_factory=RecordingLLMFactory(decisions),
+        event_sink=RecordingEventSink(),
+        approval_provider=FixedApprovalProvider(True),
+        recovery_root_factory=recovery_root,
+    )
+
+    result = service.run(RunRequest(root, "run", "https://example.test/v1", "model-name"))
+
+    assert result.status is expected_status
+    assert result.rollback_complete is True
+
+
 def test_application_never_removes_preexisting_recovery_directory(tmp_path: Path) -> None:
     root = tmp_path / "project"
     root.mkdir()

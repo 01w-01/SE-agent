@@ -119,5 +119,5 @@ def _remove_empty_created_recovery_root(path: Path, existed_before: bool) -> Non
         return
     try:
         path.rmdir()
-    except (OSError, TypeError, ValueError):
+    except BaseException:  # noqa: BLE001 - cleanup cannot change a settled run result.
         return

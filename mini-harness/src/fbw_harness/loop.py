@@ -69,6 +69,9 @@ _SAFE_TEXT_SUFFIXES = frozenset(
     {".cfg", ".csv", ".ini", ".json", ".md", ".rst", ".toml", ".txt", ".yaml", ".yml"}
 )
 _SAFE_TEXT_BASENAMES = frozenset({"license", "readme"})
+# Best-effort heuristic hints that raise CONFIRM for common capability patterns.
+# This is not a security boundary: it is intentionally incomplete and can be
+# trivially bypassed by string concatenation, unlisted APIs, or built-in functions.
 _CAPABILITY_TOKENS = {
     "process": (
         "child_process",
