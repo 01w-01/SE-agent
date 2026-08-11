@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import uuid
@@ -18,6 +19,7 @@ from .models import (
     FeedbackKind,
     Observation,
     PolicyContext,
+    PolicyDecision,
     PolicyLevel,
     ProjectMemory,
     RunEvent,
@@ -25,6 +27,7 @@ from .models import (
     RunResult,
     RunStatus,
     SessionState,
+    TestResult,
 )
 from .parser import ActionParseError, ActionParser, build_action_tools
 from .policy import PolicyEngine, authorize
@@ -37,6 +40,64 @@ _MAX_CONTEXT_FILES = 100
 _MAX_CONTEXT_OBSERVATIONS = 100
 _RUN_ID_PATTERN = re.compile(r"[0-9a-f]{32}\Z")
 _RUN_ID_ERROR = "run_id is invalid"
+_CAPABILITY_SCAN_CHARS = 32_000
+_MAX_POLICY_RULE_CHARS = 256
+_MAX_BOUNDARY_TEXT_CHARS = 1_000_000
+_CODE_SUFFIXES = frozenset(
+    {
+        ".bat",
+        ".c",
+        ".cmd",
+        ".cpp",
+        ".cs",
+        ".go",
+        ".java",
+        ".js",
+        ".jsx",
+        ".php",
+        ".ps1",
+        ".py",
+        ".pyw",
+        ".rb",
+        ".rs",
+        ".sh",
+        ".ts",
+        ".tsx",
+    }
+)
+_SAFE_TEXT_SUFFIXES = frozenset(
+    {".cfg", ".csv", ".ini", ".json", ".md", ".rst", ".toml", ".txt", ".yaml", ".yml"}
+)
+_SAFE_TEXT_BASENAMES = frozenset({"license", "readme"})
+_CAPABILITY_TOKENS = {
+    "process": (
+        "child_process",
+        "createprocess",
+        "os.popen",
+        "os.system",
+        "processbuilder",
+        "start-process",
+        "subprocess",
+        "system.diagnostics.process",
+    ),
+    "network": (
+        "http.client",
+        "httpx",
+        "import requests",
+        "import socket",
+        "import urllib",
+        "invoke-webrequest",
+        "net/http",
+        "from requests",
+        "from socket",
+        "from urllib",
+        "requests.",
+        "socket.",
+        "system.net.",
+        "urllib.",
+    ),
+    "registry": ("hkey_", "microsoft.win32.registry", "reg.exe", "winreg"),
+}
 
 
 class ToolDispatcher:
@@ -198,7 +259,13 @@ class AgentLoop:
                     return self._failure(state, "format_error_limit")
                 continue
             state.invalid_count = 0
-            policy_decision = self._policy.evaluate(action, _policy_context(action))
+            policy_context = _policy_context(action)
+            policy_decision = _validated_policy_decision(
+                _conservative_policy_decision(
+                    _validated_policy_decision(self._policy.evaluate(action, policy_context)),
+                    policy_context,
+                )
+            )
 
             if policy_decision.level is PolicyLevel.DENY:
                 state.last_feedback = self._feedback_engine.from_policy(policy_decision)
@@ -210,11 +277,14 @@ class AgentLoop:
             if policy_decision.level is PolicyLevel.CONFIRM:
                 self._transition(state, RunStatus.WAITING_APPROVAL)
                 affected_paths = (action.path,) if action.path is not None else ()
-                if not authorize(
+                approved = authorize(
                     policy_decision,
                     self._approval_provider,
                     affected_paths=affected_paths,
-                ):
+                )
+                if type(approved) is not bool:
+                    raise ValueError("invalid approval result") from None
+                if approved is False:
                     state.last_feedback = _fixed_feedback(
                         FeedbackKind.POLICY_DENIED,
                         "Policy confirmation was declined.",
@@ -235,6 +305,7 @@ class AgentLoop:
                     success=False,
                     summary="Tool execution failed.",
                 )
+            observation = _validated_observation(observation, action.kind)
             observations.append(observation)
             if len(observations) > _MAX_CONTEXT_OBSERVATIONS:
                 del observations[:-_MAX_CONTEXT_OBSERVATIONS]
@@ -248,8 +319,12 @@ class AgentLoop:
 
             if action.kind in {ActionKind.CREATE_FILE, ActionKind.EDIT_FILE}:
                 self._transition(state, RunStatus.VERIFYING)
-                test_result = self._test_runner.run(request.workspace)
-                state.last_test_passed = test_result.passed
+                test_result = _validated_test_result(self._test_runner.run(request.workspace))
+                state.last_test_passed = (
+                    test_result.passed is True
+                    and test_result.exit_code == 0
+                    and test_result.timed_out is False
+                )
                 state.last_feedback = self._feedback_engine.from_test(test_result)
                 self._transition(state, RunStatus.FEEDBACK)
                 if test_result.timed_out:
@@ -381,7 +456,116 @@ def _policy_context(action: Action) -> PolicyContext:
         changed = _line_count(action.old_text) + _line_count(action.new_text)
     else:
         changed = 0
-    return PolicyContext(dirty_paths=frozenset(), changed_line_count=changed)
+    return PolicyContext(
+        dirty_paths=frozenset(),
+        changed_line_count=changed,
+        dangerous_capabilities=_dangerous_capabilities(action),
+    )
+
+
+def _dangerous_capabilities(action: Action) -> frozenset[str]:
+    if action.kind is ActionKind.CREATE_FILE:
+        source = action.content
+    elif action.kind is ActionKind.EDIT_FILE:
+        source = action.new_text
+    else:
+        return frozenset()
+    assert action.path is not None and source is not None
+    suffix = Path(action.path).suffix.lower()
+    basename = Path(action.path).name.lower()
+    if suffix in _SAFE_TEXT_SUFFIXES or basename in _SAFE_TEXT_BASENAMES:
+        return frozenset()
+    if suffix not in _CODE_SUFFIXES or len(source) > _CAPABILITY_SCAN_CHARS:
+        return frozenset({"unknown"})
+    lowered = source.lower()
+    return frozenset(
+        capability
+        for capability, tokens in _CAPABILITY_TOKENS.items()
+        if any(token in lowered for token in tokens)
+    )
+
+
+def _validated_policy_decision(value: object) -> PolicyDecision:
+    if type(value) is not PolicyDecision or type(value.level) is not PolicyLevel:
+        raise ValueError("invalid policy decision") from None
+    if value.level not in (PolicyLevel.ALLOW, PolicyLevel.CONFIRM, PolicyLevel.DENY):
+        raise ValueError("invalid policy decision") from None
+    if not _bounded_text(value.rule_id, _MAX_POLICY_RULE_CHARS) or not _bounded_text(
+        value.reason, 2_000
+    ):
+        raise ValueError("invalid policy decision") from None
+    if type(value.risk_facts) is not tuple or len(value.risk_facts) > 100:
+        raise ValueError("invalid policy decision") from None
+    if any(not _bounded_text(item, 2_000) for item in value.risk_facts):
+        raise ValueError("invalid policy decision") from None
+    return value
+
+
+def _conservative_policy_decision(
+    decision: PolicyDecision, context: PolicyContext
+) -> PolicyDecision:
+    if "unknown" not in context.dangerous_capabilities or decision.level is PolicyLevel.DENY:
+        return decision
+    fact = "dangerous_capability:unknown"
+    facts = decision.risk_facts if fact in decision.risk_facts else (*decision.risk_facts, fact)
+    if decision.level is PolicyLevel.CONFIRM:
+        return PolicyDecision(decision.level, decision.rule_id, decision.reason, facts)
+    return PolicyDecision(
+        PolicyLevel.CONFIRM,
+        "CONFIRM_DANGEROUS_CAPABILITY",
+        "Code capability could not be classified safely.",
+        facts,
+    )
+
+
+def _validated_observation(value: object, expected_kind: ActionKind) -> Observation:
+    if type(value) is not Observation:
+        raise ValueError("invalid tool observation") from None
+    valid_outcome = (value.success is True and value.exit_code in (None, 0)) or (
+        value.success is False and value.exit_code != 0
+    )
+    if (
+        not _bounded_text(value.kind, 64)
+        or value.kind != expected_kind.value
+        or type(value.success) is not bool
+        or not valid_outcome
+        or not _bounded_text(value.summary, 2_000)
+        or not _bounded_text(value.output_tail, _MAX_BOUNDARY_TEXT_CHARS, allow_empty=True)
+        or (value.exit_code is not None and type(value.exit_code) is not int)
+    ):
+        raise ValueError("invalid tool observation") from None
+    return value
+
+
+def _validated_test_result(value: object) -> TestResult:
+    if type(value) is not TestResult:
+        raise ValueError("invalid test result") from None
+    duration = value.duration_seconds
+    valid_duration = type(duration) in (int, float) and math.isfinite(duration) and duration >= 0
+    valid_outcome = (
+        value.exit_code == 0
+        and value.passed is True
+        and value.timed_out is False
+        and not value.failed_tests
+    ) or (value.exit_code != 0 and value.passed is False)
+    if (
+        type(value.passed) is not bool
+        or type(value.exit_code) is not int
+        or type(value.timed_out) is not bool
+        or not valid_duration
+        or not valid_outcome
+        or not _bounded_text(value.stdout, _MAX_BOUNDARY_TEXT_CHARS, allow_empty=True)
+        or not _bounded_text(value.stderr, _MAX_BOUNDARY_TEXT_CHARS, allow_empty=True)
+        or type(value.failed_tests) is not tuple
+        or len(value.failed_tests) > 100
+        or any(not _bounded_text(item, 2_000) for item in value.failed_tests)
+    ):
+        raise ValueError("invalid test result") from None
+    return value
+
+
+def _bounded_text(value: object, limit: int, *, allow_empty: bool = False) -> bool:
+    return type(value) is str and (allow_empty or bool(value)) and len(value) <= limit
 
 
 def _line_count(value: str | None) -> int:

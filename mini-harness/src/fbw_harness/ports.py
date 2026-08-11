@@ -35,4 +35,11 @@ class LLMClient(Protocol):
 
 @runtime_checkable
 class LLMClientFactory(Protocol):
-    def create(self, *, base_url: str, model: str, api_key: str) -> LLMClient: ...
+    def create(
+        self,
+        *,
+        base_url: str,
+        model: str,
+        api_key: str,
+        max_retries: int | None = None,
+    ) -> LLMClient: ...
