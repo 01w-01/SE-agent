@@ -1429,7 +1429,7 @@ git commit -m "feat: 实现 Agent 主循环"
 - Consumes: `ApplicationService`、`KeyringCredentialStore`、`ScriptedMockLLM`。
 - Produces: `main(argv: Sequence[str] | None = None, *, app: ApplicationService | None = None, credential_store: CredentialStore | None = None) -> int`；注入参数仅供测试/组合根使用；子命令 `run`、`credential set/status/clear`、`memory clear`、`demo guardrail/feedback/no-progress/all`。
 
-- [ ] **Step 1: 写 CLI 边界与无终端核心失败测试**
+- [x] **Step 1: 写 CLI 边界与无终端核心失败测试**
 
 ```python
 class FakeApplication:
@@ -1459,17 +1459,17 @@ def test_key_is_never_accepted_as_cli_argument() -> None:
         parser.parse_args(["run", "--api-key", "value"])
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `uv run --project mini-harness pytest mini-harness/tests/test_cli.py mini-harness/tests/test_mechanism_demos.py -v`
 
 Expected: FAIL because CLI/demos are absent.
 
-- [ ] **Step 3: 实现 CLIAdapter、ConsoleEventSink 和 ConsoleApprovalProvider**
+- [x] **Step 3: 实现 CLIAdapter、ConsoleEventSink 和 ConsoleApprovalProvider**
 
 `credential set` 使用 `getpass.getpass`；status 只显示 configured/service/account；run 必填 workspace/task/base-url/model。ConsoleEventSink 渲染 `[轮次] 动作/策略/测试/停止`；JSONL sink 可选且只写 RunEvent。JSONL sink 在输出边界递归把只读 Mapping 转为 dict、tuple/frozenset 转为 list、Path/Enum 转为字符串值，遇到其他对象拒绝写出；不得为方便序列化而把领域模型改回可变容器。Ctrl+C 返回 ApplicationService 的回滚结果。
 
-- [ ] **Step 4: 实现三个确定性演示**
+- [x] **Step 4: 实现三个确定性演示**
 
 1. `guardrail`：Mock 请求 `../outside.txt`，断言 DENY 且文件工具未调用。
 2. `feedback`：首次写入错误 clamp，真实 pytest 失败；最新 Feedback 进入第二次请求；第二次正确修改并通过。
@@ -1477,11 +1477,11 @@ Expected: FAIL because CLI/demos are absent.
 
 演示复制 fixture 到 pytest 临时目录，绝不修改用户工作区；`scripts/demo.ps1` 依次调用三个子命令并在任一非零时失败。
 
-- [ ] **Step 5: 验证真实/Mock 共用 AgentLoop**
+- [x] **Step 5: 验证真实/Mock 共用 AgentLoop**
 
 测试 monkeypatch 组合根，断言 demo 和 run 注入不同 LLMClientFactory，但 `ApplicationService` 与 `AgentLoop` 类型完全相同，不允许 demos 自建循环。
 
-- [ ] **Step 6: 运行 CLI、演示和全量测试**
+- [x] **Step 6: 运行 CLI、演示和全量测试**
 
 Run: `uv run --project mini-harness fbw-harness --help`
 
@@ -1491,12 +1491,14 @@ Run: `uv run --project mini-harness pytest -q`
 
 Expected: help 退出 `0`；三个 demo 均显示稳定结果并退出 `0`；测试 PASS。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```powershell
 git add -- mini-harness/src/fbw_harness/cli.py mini-harness/src/fbw_harness/demos.py mini-harness/tests scripts/demo.ps1
 git commit -m "feat: 添加 CLI 与机制演示"
 ```
+
+**实现记录（2026-08-11）：** 首版 `473b32a feat: 添加 CLI 与机制演示` 提供真实 CLI、凭据/记忆命令、稳定事件输出和三个使用既有 ApplicationService/AgentLoop 的确定性演示。唯一 task review 为 0 Critical、质量/安全 APPROVED，并把两项 Important 记为非阻断 TODO：guardrail 指标需取自真实执行、共享组合根测试需观察实际 factory/loop 构造。按用户设定的一轮上限，以 TDD 集中修复并追加 `4ab5134 fix: 强化演示机制验证`，不再进行第二轮复审。控制器最终验证：Task 12 定向 `11 passed`、全量 `743 passed, 1 skipped`，CLI help、`demo all`、`scripts/demo.ps1`、Ruff、本任务 format、当前树秘密扫描和累计 diff check 全部通过。集成见 [PR #12](https://github.com/01w-01/SE-agent/pull/12)。
 
 ---
 
