@@ -1498,7 +1498,7 @@ git add -- mini-harness/src/fbw_harness/cli.py mini-harness/src/fbw_harness/demo
 git commit -m "feat: 添加 CLI 与机制演示"
 ```
 
-**实现记录（2026-08-11）：** 首版 `473b32a feat: 添加 CLI 与机制演示` 提供真实 CLI、凭据/记忆命令、稳定事件输出和三个使用既有 ApplicationService/AgentLoop 的确定性演示。唯一 task review 为 0 Critical、质量/安全 APPROVED，并把两项 Important 记为非阻断 TODO：guardrail 指标需取自真实执行、共享组合根测试需观察实际 factory/loop 构造。按用户设定的一轮上限，以 TDD 集中修复并追加 `4ab5134 fix: 强化演示机制验证`，不再进行第二轮复审。控制器最终验证：Task 12 定向 `11 passed`、全量 `743 passed, 1 skipped`，CLI help、`demo all`、`scripts/demo.ps1`、Ruff、本任务 format、当前树秘密扫描和累计 diff check 全部通过。集成见 [PR #12](https://github.com/01w-01/SE-agent/pull/12)。
+**实现记录（2026-08-11）：** 首版 `473b32a feat: 添加 CLI 与机制演示` 提供真实 CLI、凭据/记忆命令、稳定事件输出和三个使用既有 ApplicationService/AgentLoop 的确定性演示。唯一 task review 为 0 Critical、质量/安全 APPROVED，并把两项 Important 记为非阻断 TODO：guardrail 指标需取自真实执行、共享组合根测试需观察实际 factory/loop 构造。按用户设定的一轮上限，以 TDD 集中修复并追加 `4ab5134 fix: 强化演示机制验证`，不再进行第二轮复审。控制器最终验证：Task 12 定向 `11 passed`、全量 `743 passed, 1 skipped`，CLI help、`demo all`、`scripts/demo.ps1`、Ruff、本任务 format、当前树秘密扫描和累计 diff check 全部通过。集成见 [PR #12](https://github.com/01w-01/SE-agent/pull/12)。合并后 Windows checkout 将 fixture 转为 CRLF，暴露 `read_text()` 换行规范化导致 expected SHA 与真实磁盘字节不一致；以显式 CRLF RED 测试定位后追加 `e9b1cd9 fix: 保留演示 fixture 的 CRLF 换行`，全量增至 `744 passed, 1 skipped`，补充集成见 [PR #13](https://github.com/01w-01/SE-agent/pull/13)。
 
 ---
 

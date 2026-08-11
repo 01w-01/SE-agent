@@ -319,6 +319,7 @@
 - 控制器最终门禁：Task 12 定向 `11 passed`、全量 `743 passed, 1 skipped`；CLI help、`demo all`、`scripts/demo.ps1`、Ruff、本任务 format、正式当前树秘密扫描和累计 diff check 全部通过。
 - 已知非阻断状态：全树 format 仍有 Task 12 白名单外的既有漂移，未跨任务修改；唯一 pytest skip 仍为 Windows 不适用的 POSIX killpg 分支。
 - 分支已推送；PR：[PR #12](https://github.com/01w-01/SE-agent/pull/12)。
+- 合并后 Windows 主 worktree 复验稳定失败：CRLF fixture 被 `read_text()` 规范化为 LF，expected SHA 与 FileTransaction 的磁盘字节哈希不一致。经 systematic-debugging 追踪到两个 `EditConflictError`，以显式 CRLF TDD 回归最小修复；提交 `e9b1cd9 fix: 保留演示 fixture 的 CRLF 换行`，控制器复验机制 `7 passed`、全量 `744 passed, 1 skipped` 及静态门禁通过。该集成 hotfix 不属于第二轮 reviewer/fix loop；补充 PR：[PR #13](https://github.com/01w-01/SE-agent/pull/13)。
 
 ## 3. 当前关键决定
 

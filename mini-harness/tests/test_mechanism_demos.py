@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -72,6 +73,27 @@ def test_feedback_demo_passes_after_second_request_receives_latest_feedback() ->
     latest_feedback = json.loads(result.llm_calls[1].messages[-1]["content"])
     assert latest_feedback["section"] == "latest_feedback"
     assert latest_feedback["feedback"]["passed"] is False
+
+
+def test_feedback_demo_completes_with_a_crlf_fixture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Break caught: hashes derived from newline-normalized fixture text conflict with CRLF disk bytes.
+    from fbw_harness import demos
+
+    fixture = tmp_path / "clamp_project"
+    fixture.mkdir()
+    for name in ("clamp.py", "test_clamp.py"):
+        source = (demos._FIXTURE_ROOT / name).read_text(encoding="utf-8")
+        with (fixture / name).open("w", encoding="utf-8", newline="") as stream:
+            stream.write(source.replace("\n", "\r\n"))
+    assert b"\r\n" in (fixture / "clamp.py").read_bytes()
+    monkeypatch.setattr(demos, "_FIXTURE_ROOT", fixture)
+
+    result = demos.run_demo("feedback")
+
+    assert result.exit_code == 0
+    assert result.run_result.last_test_passed is True
 
 
 def test_no_progress_demo_rolls_back_original_file_after_repeated_error() -> None:
