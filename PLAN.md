@@ -1130,7 +1130,7 @@ quoted fragment 与 ASCII known-secret 契约。最终验证 Task 8 `234 passed,
 - Consumes: `LLMClient`、`LLMClientFactory`、`RawDecision`、`Action`、`Feedback`、`ProjectMemory`。
 - Produces: `OpenAICompatibleClient`、`OpenAIClientFactory`、`ScriptedMockLLM`、`ActionParser.parse`、`ContextBuilder.build`、固定工具 schema。
 
-- [ ] **Step 1: 写解析与反馈优先级失败测试**
+- [x] **Step 1: 写解析与反馈优先级失败测试**
 
 ```python
 def test_parser_requires_exactly_one_known_tool_call() -> None:
@@ -1161,29 +1161,29 @@ def test_latest_feedback_survives_context_budget() -> None:
     assert "old-observation-0-full-body" not in serialized
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `uv run --project mini-harness pytest mini-harness/tests/test_llm_context_parser.py -v`
 
 Expected: FAIL because parser/context/LLM modules are absent.
 
-- [ ] **Step 3: 实现严格 parser 和固定工具 schema**
+- [x] **Step 3: 实现严格 parser 和固定工具 schema**
 
 只接受一个 function call；工具名必须属于五种 ActionKind；JSON 必须是 object 且无未知字段；`finish` 只接受 reason。解析错误形成 `ActionParseError`，原始文本先截断和脱敏，不执行自由文本。
 
-- [ ] **Step 4: 实现 ContextBuilder**
+- [x] **Step 4: 实现 ContextBuilder**
 
 顺序固定为系统规则、任务与预算、工具协议、项目记忆摘要、相关文件、旧观察摘要、最新 Feedback。超过字符预算时依次丢弃旧观察全文、非相关文件、旧摘要；不得丢弃系统安全规则、任务和最新 Feedback。
 
-- [ ] **Step 5: 实现真实与脚本化 LLM**
+- [x] **Step 5: 实现真实与脚本化 LLM**
 
 `OpenAICompatibleClient` 只调用一次 `client.chat.completions.create`，重试仅覆盖 timeout/connection/429/5xx，最多 2 次；鉴权和格式错误不重试。`ScriptedMockLLM` 按队列返回 RawDecision，记录每次 messages，耗尽时抛稳定错误。
 
-- [ ] **Step 6: 用 Fake OpenAI SDK 验证无网络行为**
+- [x] **Step 6: 用 Fake OpenAI SDK 验证无网络行为**
 
 断言 Base URL、model、messages、tools 正确传入；API Key 不出现在 RawDecision、异常或事件。默认测试不得访问网络。
 
-- [ ] **Step 7: 全量验证并提交**
+- [x] **Step 7: 全量验证并提交**
 
 Run: `uv run --project mini-harness pytest mini-harness/tests/test_llm_context_parser.py -v`
 
@@ -1193,6 +1193,13 @@ Run: `uv run --project mini-harness pytest -q`
 git add -- mini-harness/src/fbw_harness/llm.py mini-harness/src/fbw_harness/mock_llm.py mini-harness/src/fbw_harness/parser.py mini-harness/src/fbw_harness/context.py mini-harness/tests/test_llm_context_parser.py
 git commit -m "feat: 添加 LLM 决策与上下文构建"
 ```
+
+**实现记录（2026-08-10）：** 首版 `419c762`；review fix 提交 `5d513d0`、
+`53f29a8`、`80ca933`，补齐惰性异常统一映射、先限界后脱敏、最旧项完整淘汰、
+schema 防污染、LLM 输出硬上限及伪装内建类型拒绝。最终验证 Task 9
+`113 passed`、全量 `611 passed, 1 skipped`，Ruff、format、秘密扫描和累计
+diff check 通过；独立 review 为 0 Critical / 0 Important；集成见
+[PR #9](https://github.com/01w-01/SE-agent/pull/9)。
 
 ---
 
