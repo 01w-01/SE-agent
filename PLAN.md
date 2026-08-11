@@ -1582,7 +1582,7 @@ git add -- README.md mini-harness/README.md mini-harness/fbw-harness.spec mini-h
 git commit -m "build: 添加 CI 与 Windows 分发"
 ```
 
-**实现记录（2026-08-11）：** `852db5e build: 添加 CI 与 Windows 分发` 完成根 README、包内 README、GitLab/GitHub CI、PyInstaller spec、确定性 build、历史扫描和分发合同。真实构建逐步暴露并修复包入口相对导入、fixture 缺失、冻结 exe 不能处理 `-m pytest` 三个冻结边界，最终单文件 help/demo 无需系统 Python、网络或 Key。唯一 task review 为规格 PASS、质量/安全 APPROVED、0 Critical；两项 Important/TODO 与一项 Minor 在唯一 fix round 1/1 中以 `84d4527 fix: 收紧分发构建清理门禁` 集中处理：staging 清理失败统一删除已发布 exe/SHA，合同测试覆盖 spec/workflow/历史输出，README 命令统一从仓库根运行；不做第二轮复审。控制器最终验证：分发合同 `6 passed`、全量 `750 passed, 1 skipped`、Ruff、format、当前树扫描、完整 build、exe help/demo、SHA 和累计 diff 通过。现有历史扫描按已接受的临时 Key 风险真实退出 `1`，因此 tag/Release 继续被阻断，未弱化或伪装通过。
+**实现记录（2026-08-11）：** `852db5e build: 添加 CI 与 Windows 分发` 完成根 README、包内 README、GitLab/GitHub CI、PyInstaller spec、确定性 build、历史扫描和分发合同。真实构建逐步暴露并修复包入口相对导入、fixture 缺失、冻结 exe 不能处理 `-m pytest` 三个冻结边界，最终单文件 help/demo 无需系统 Python、网络或 Key。唯一 task review 为规格 PASS、质量/安全 APPROVED、0 Critical；两项 Important/TODO 与一项 Minor 在唯一 fix round 1/1 中以 `84d4527 fix: 收紧分发构建清理门禁` 集中处理：staging 清理失败统一删除已发布 exe/SHA，合同测试覆盖 spec/workflow/历史输出，README 命令统一从仓库根运行；不做第二轮复审。控制器最终验证：分发合同 `6 passed`、全量 `750 passed, 1 skipped`、Ruff、format、当前树扫描、完整 build、exe help/demo、SHA 和累计 diff 通过。现有历史扫描按已接受的临时 Key 风险真实退出 `1`，因此 tag/Release 继续被阻断，未弱化或伪装通过。集成见 [PR #14](https://github.com/01w-01/SE-agent/pull/14)。
 
 ---
 

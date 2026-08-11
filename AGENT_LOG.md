@@ -331,7 +331,7 @@
 - 唯一 fix round 1/1：受控复现 cleanup 非零但 exe 留存，统一失败清理最终 exe/SHA；补 spec、workflow、历史输出严格合同并修 README；提交 `84d4527 fix: 收紧分发构建清理门禁`，按用户裁决不做第二轮复审。
 - 控制器最终门禁：定向 `6 passed`、完整 build 内全量 `750 passed, 1 skipped`、Ruff、format、当前树扫描、exe help/demo、SHA 与累计 diff 全部通过。
 - 历史扫描按用户已接受的临时 Key 风险真实退出 `1`，只输出 SHA 与路径；tag/Release 继续被阻断，没有改写历史或弱化门禁。
-- PR：待创建后回写。
+- 分支已推送；PR：[PR #14](https://github.com/01w-01/SE-agent/pull/14)。
 
 ## 3. 当前关键决定
 
