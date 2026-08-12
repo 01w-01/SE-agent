@@ -298,8 +298,8 @@ git add -- mini-harness scripts/scan-current-tree.ps1
 git commit -m "chore: 建立安全项目骨架"
 ```
 
-**实现记录（2026-08-09）：** 实现提交 `c5ed568`；独立评审后的修复提交
-`1c8c001`。验证为 `6 passed`、Ruff、当前树扫描和 `git diff --check` 均通过；独立
+**实现记录（2026-08-09）：** 实现提交 `7d9a5be`；独立评审后的修复提交
+`afdca2d`。验证为 `6 passed`、Ruff、当前树扫描和 `git diff --check` 均通过；独立
 review/fix round 1 clean。PR：[PR #1](https://github.com/01w-01/SE-agent/pull/1)。
 
 ---
@@ -582,8 +582,8 @@ git add -- mini-harness/src/fbw_harness/models.py mini-harness/src/fbw_harness/p
 git commit -m "feat: 定义 Harness 核心契约"
 ```
 
-**实现记录（2026-08-09）：** 实现提交 `901533a`；两轮独立评审后的修复提交
-`3f75989`、`37e28ee`。最终验证为模型测试 `59 passed`、全量测试 `65 passed`、
+**实现记录（2026-08-09）：** 实现提交 `5fe4055`；两轮独立评审后的修复提交
+`d3d261b`、`4ad9a25`。最终验证为模型测试 `59 passed`、全量测试 `65 passed`、
 Ruff 和 `git diff --check` 均通过；review/fix round 2 clean。PR：
 [PR #2](https://github.com/01w-01/SE-agent/pull/2)。
 
@@ -677,8 +677,8 @@ git add -- mini-harness/src/fbw_harness/config.py mini-harness/tests/test_config
 git commit -m "feat: 添加声明式安全配置"
 ```
 
-**实现记录（2026-08-09）：** 实现提交 `81e6c58`；独立评审后的修复提交
-`a9a3586`。最终验证为配置测试 `28 passed`、全量测试 `93 passed`、Ruff 和
+**实现记录（2026-08-09）：** 实现提交 `ab88afa`；独立评审后的修复提交
+`9e00873`。最终验证为配置测试 `28 passed`、全量测试 `93 passed`、Ruff 和
 `git diff --check` 均通过；review/fix round 1 clean。PR：
 [PR #3](https://github.com/01w-01/SE-agent/pull/3)。
 
@@ -767,8 +767,8 @@ git add -- mini-harness/src/fbw_harness/credentials.py mini-harness/tests/test_c
 git commit -m "feat: 添加安全凭据存储"
 ```
 
-**实现记录（2026-08-09）：** 实现提交 `4e7fdc0`；独立评审后的修复提交
-`1ec3d3f`。最终验证为凭据测试 `9 passed`、全量测试 `102 passed`、Ruff 和
+**实现记录（2026-08-09）：** 实现提交 `460ef89`；独立评审后的修复提交
+`b750d44`。最终验证为凭据测试 `9 passed`、全量测试 `102 passed`、Ruff 和
 `git diff --check` 均通过；review/fix round 1 clean。`status()` 后端失败缺少直接
 测试记录为 deferred Minor，留待最终整分支审查。PR：
 [PR #4](https://github.com/01w-01/SE-agent/pull/4)。
@@ -847,8 +847,8 @@ git add -- mini-harness/src/fbw_harness/workspace.py mini-harness/tests/test_wor
 git commit -m "feat: 添加工作区安全围栏"
 ```
 
-**实现记录（2026-08-09）：** 实现提交 `d69365d`；用户选择路径式方案 B 后，
-修复提交 `830a2a7`。最终验证为工作区测试 `62 passed`、全量测试 `164 passed`、
+**实现记录（2026-08-09）：** 实现提交 `40ca5f7`；用户选择路径式方案 B 后，
+修复提交 `3e55761`。最终验证为工作区测试 `62 passed`、全量测试 `164 passed`、
 Ruff、format 和 `git diff --check` 均通过；review/fix round 1 clean。原生句柄级
 TOCTOU 防护未实现，残余风险按 SPEC R-09 保留。PR：
 [PR #5](https://github.com/01w-01/SE-agent/pull/5)。
@@ -932,8 +932,8 @@ git add -- mini-harness/src/fbw_harness/transactions.py mini-harness/tests/test_
 git commit -m "feat: 添加文件事务与回滚"
 ```
 
-**实现记录（2026-08-10）：** 实现提交 `c67d2ac`；用户选择路径式方案 B 后，
-修复提交 `b4d7c1a`。最终验证为事务测试 `49 passed`、全量测试 `213 passed`、
+**实现记录（2026-08-10）：** 实现提交 `ecc2d79`；用户选择路径式方案 B 后，
+修复提交 `398e589`。最终验证为事务测试 `49 passed`、全量测试 `213 passed`、
 Ruff、定向 format 和 `git diff --check` 均通过；review/fix round 1 clean。
 平台级条件更新未实现，残余竞态按 SPEC R-10 保留。PR：
 [PR #6](https://github.com/01w-01/SE-agent/pull/6)。
@@ -1014,8 +1014,8 @@ git add -- mini-harness/src/fbw_harness/policy.py mini-harness/tests/test_policy
 git commit -m "feat: 添加治理与人工审批"
 ```
 
-**实现记录（2026-08-10）：** 实现提交 `fc9e8d7`；独立评审后的修复提交
-`309cc15`。最终验证为策略测试 `51 passed`、全量测试 `264 passed`、Ruff、
+**实现记录（2026-08-10）：** 实现提交 `9a26331`；独立评审后的修复提交
+`aa38758`。最终验证为策略测试 `51 passed`、全量测试 `264 passed`、Ruff、
 format 和 `git diff --check` 均通过；review/fix round 1 clean。真实 ToolDispatcher
 零调用证明按依赖关系留到 Task 11。PR：
 [PR #7](https://github.com/01w-01/SE-agent/pull/7)。
@@ -1105,9 +1105,9 @@ git add -- mini-harness/src/fbw_harness/testing.py mini-harness/src/fbw_harness/
 git commit -m "feat: 添加测试反馈闭环基础"
 ```
 
-**实现记录（2026-08-10）：** 首版与五轮安全修复提交为 `45800ad`、
-`842ee04`、`9b47845`、`97a42f9`、`4788d56`、`b4e4d65`；达到 review
-上限后停止叠补丁，以 `f60bb4c` 重构两层流式脱敏，再以 `247135a` 收紧
+**实现记录（2026-08-10）：** 首版与五轮安全修复提交为 `90448d7`、
+`bdfe5ca`、`a68b953`、`f4928c6`、`19c2620`、`ad0d26e`；达到 review
+上限后停止叠补丁，以 `03d7519` 重构两层流式脱敏，再以 `efa9b9c` 收紧
 quoted fragment 与 ASCII known-secret 契约。最终验证 Task 8 `234 passed, 1 skipped`、
 全量 `498 passed, 1 skipped`，Ruff、format、秘密扫描和累计 diff check 通过；
 独立 review 为 0 Critical / 0 Important / 0 Minor。PR：
@@ -1194,8 +1194,8 @@ git add -- mini-harness/src/fbw_harness/llm.py mini-harness/src/fbw_harness/mock
 git commit -m "feat: 添加 LLM 决策与上下文构建"
 ```
 
-**实现记录（2026-08-10）：** 首版 `419c762`；review fix 提交 `5d513d0`、
-`53f29a8`、`80ca933`，补齐惰性异常统一映射、先限界后脱敏、最旧项完整淘汰、
+**实现记录（2026-08-10）：** 首版 `5d64989`；review fix 提交 `58a06c2`、
+`84f6926`、`49ad984`，补齐惰性异常统一映射、先限界后脱敏、最旧项完整淘汰、
 schema 防污染、LLM 输出硬上限及伪装内建类型拒绝。最终验证 Task 9
 `113 passed`、全量 `611 passed, 1 skipped`，Ruff、format、秘密扫描和累计
 diff check 通过；独立 review 为 0 Critical / 0 Important；集成见
@@ -1257,9 +1257,9 @@ git add -- mini-harness/src/fbw_harness/memory.py mini-harness/tests/test_memory
 git commit -m "feat: 添加受控项目记忆"
 ```
 
-**实现记录（2026-08-11）：** 首版 `c1befd5`；task review fix 提交
-`de99cac`、`44c8f12`，补齐固定损坏提示、UTC 时间、静态 reparse 覆盖和
-warning-as-error 回退；最终累计 review fix `5eeb08a` 补齐 quoted JSON/TOML/env
+**实现记录（2026-08-11）：** 首版 `d142dda`；task review fix 提交
+`230a704`、`854bd80`，补齐固定损坏提示、UTC 时间、静态 reparse 覆盖和
+warning-as-error 回退；最终累计 review fix `60dec5b` 补齐 quoted JSON/TOML/env
 秘密字段、读取状态区分与畸形路径安全失败。控制器最终验证 Task 10 `32 passed`、
 全量 `643 passed, 1 skipped`，Ruff、format、秘密扫描和累计 diff check 通过；
 最终 review 为 Ready to merge。Task 11 负责只在成功运行后调用 `save_success()`，
@@ -1406,7 +1406,7 @@ git add -- mini-harness/src/fbw_harness/loop.py mini-harness/src/fbw_harness/app
 git commit -m "feat: 实现 Agent 主循环"
 ```
 
-**实现记录（2026-08-11）：** Task 11 以 `e102edc`、`de4c48e`、`c654dc6` 完成 AgentLoop、ApplicationService、治理/审批、反馈闭环、终态与恢复路径。最终审查提出的有限 capability token 表被用户裁决为已知限制：它只提供 best-effort `CONFIRM` 提示，不是安全边界，不要求完备，也不继续扩表或重构。终态后的恢复目录清理另以 TDD 收口并提交 `4cd4cb4`，保证清理阶段的 `KeyboardInterrupt` 不推翻已确定的提交或完整回滚结果。正式安全边界统一为工作区路径围栏、动作级策略/HITL、逐文件事务与回滚；工作区代码由 pytest 以当前用户权限执行，明确不在安全边界内，见 SPEC R-12。最终门禁：定向 `227 passed`、全量 `729 passed, 1 skipped`、Ruff、8 文件 format、当前树秘密扫描和累计 diff check 均通过。
+**实现记录（2026-08-11）：** Task 11 以 `44c20d5`、`e756d74`、`b9ff945` 完成 AgentLoop、ApplicationService、治理/审批、反馈闭环、终态与恢复路径。最终审查提出的有限 capability token 表被用户裁决为已知限制：它只提供 best-effort `CONFIRM` 提示，不是安全边界，不要求完备，也不继续扩表或重构。终态后的恢复目录清理另以 TDD 收口并提交 `de296d9`，保证清理阶段的 `KeyboardInterrupt` 不推翻已确定的提交或完整回滚结果。正式安全边界统一为工作区路径围栏、动作级策略/HITL、逐文件事务与回滚；工作区代码由 pytest 以当前用户权限执行，明确不在安全边界内，见 SPEC R-12。最终门禁：定向 `227 passed`、全量 `729 passed, 1 skipped`、Ruff、8 文件 format、当前树秘密扫描和累计 diff check 均通过。
 
 **Task 12–14 审查约束（用户裁决）：** reviewer 必须按上述 SPEC 威胁模型审查。工作区内代码执行相关问题只记已知限制，不判实现缺陷；不要求任何 denylist 或模式表完备。Critical 仅限数据丢失、回滚失败、凭据泄漏和越界写入；其他问题按 Important 及以下记录为 TODO/已知限制且不阻断 PR。每个 task 最多一轮修复，不做第二轮复审。集成见 [PR #11](https://github.com/01w-01/SE-agent/pull/11)。
 
@@ -1498,7 +1498,7 @@ git add -- mini-harness/src/fbw_harness/cli.py mini-harness/src/fbw_harness/demo
 git commit -m "feat: 添加 CLI 与机制演示"
 ```
 
-**实现记录（2026-08-11）：** 首版 `473b32a feat: 添加 CLI 与机制演示` 提供真实 CLI、凭据/记忆命令、稳定事件输出和三个使用既有 ApplicationService/AgentLoop 的确定性演示。唯一 task review 为 0 Critical、质量/安全 APPROVED，并把两项 Important 记为非阻断 TODO：guardrail 指标需取自真实执行、共享组合根测试需观察实际 factory/loop 构造。按用户设定的一轮上限，以 TDD 集中修复并追加 `4ab5134 fix: 强化演示机制验证`，不再进行第二轮复审。控制器最终验证：Task 12 定向 `11 passed`、全量 `743 passed, 1 skipped`，CLI help、`demo all`、`scripts/demo.ps1`、Ruff、本任务 format、当前树秘密扫描和累计 diff check 全部通过。集成见 [PR #12](https://github.com/01w-01/SE-agent/pull/12)。合并后 Windows checkout 将 fixture 转为 CRLF，暴露 `read_text()` 换行规范化导致 expected SHA 与真实磁盘字节不一致；以显式 CRLF RED 测试定位后追加 `e9b1cd9 fix: 保留演示 fixture 的 CRLF 换行`，全量增至 `744 passed, 1 skipped`，补充集成见 [PR #13](https://github.com/01w-01/SE-agent/pull/13)。
+**实现记录（2026-08-11）：** 首版 `6f3d209 feat: 添加 CLI 与机制演示` 提供真实 CLI、凭据/记忆命令、稳定事件输出和三个使用既有 ApplicationService/AgentLoop 的确定性演示。唯一 task review 为 0 Critical、质量/安全 APPROVED，并把两项 Important 记为非阻断 TODO：guardrail 指标需取自真实执行、共享组合根测试需观察实际 factory/loop 构造。按用户设定的一轮上限，以 TDD 集中修复并追加 `ad324a5 fix: 强化演示机制验证`，不再进行第二轮复审。控制器最终验证：Task 12 定向 `11 passed`、全量 `743 passed, 1 skipped`，CLI help、`demo all`、`scripts/demo.ps1`、Ruff、本任务 format、当前树秘密扫描和累计 diff check 全部通过。集成见 [PR #12](https://github.com/01w-01/SE-agent/pull/12)。合并后 Windows checkout 将 fixture 转为 CRLF，暴露 `read_text()` 换行规范化导致 expected SHA 与真实磁盘字节不一致；以显式 CRLF RED 测试定位后追加 `f5718ba fix: 保留演示 fixture 的 CRLF 换行`，全量增至 `744 passed, 1 skipped`，补充集成见 [PR #13](https://github.com/01w-01/SE-agent/pull/13)。
 
 ---
 
@@ -1582,7 +1582,7 @@ git add -- README.md mini-harness/README.md mini-harness/fbw-harness.spec mini-h
 git commit -m "build: 添加 CI 与 Windows 分发"
 ```
 
-**实现记录（2026-08-11）：** `852db5e build: 添加 CI 与 Windows 分发` 完成根 README、包内 README、GitLab/GitHub CI、PyInstaller spec、确定性 build、历史扫描和分发合同。真实构建逐步暴露并修复包入口相对导入、fixture 缺失、冻结 exe 不能处理 `-m pytest` 三个冻结边界，最终单文件 help/demo 无需系统 Python、网络或 Key。唯一 task review 为规格 PASS、质量/安全 APPROVED、0 Critical；两项 Important/TODO 与一项 Minor 在唯一 fix round 1/1 中以 `84d4527 fix: 收紧分发构建清理门禁` 集中处理：staging 清理失败统一删除已发布 exe/SHA，合同测试覆盖 spec/workflow/历史输出，README 命令统一从仓库根运行；不做第二轮复审。控制器最终验证：分发合同 `6 passed`、全量 `750 passed, 1 skipped`、Ruff、format、当前树扫描、完整 build、exe help/demo、SHA 和累计 diff 通过。现有历史扫描按已接受的临时 Key 风险真实退出 `1`，因此 tag/Release 继续被阻断，未弱化或伪装通过。集成见 [PR #14](https://github.com/01w-01/SE-agent/pull/14)。
+**实现记录（2026-08-11）：** `ba17f6b build: 添加 CI 与 Windows 分发` 完成根 README、包内 README、GitLab/GitHub CI、PyInstaller spec、确定性 build、历史扫描和分发合同。真实构建逐步暴露并修复包入口相对导入、fixture 缺失、冻结 exe 不能处理 `-m pytest` 三个冻结边界，最终单文件 help/demo 无需系统 Python、网络或 Key。唯一 task review 为规格 PASS、质量/安全 APPROVED、0 Critical；两项 Important/TODO 与一项 Minor 在唯一 fix round 1/1 中以 `c177db5 fix: 收紧分发构建清理门禁` 集中处理：staging 清理失败统一删除已发布 exe/SHA，合同测试覆盖 spec/workflow/历史输出，README 命令统一从仓库根运行；不做第二轮复审。控制器最终验证：分发合同 `6 passed`、全量 `750 passed, 1 skipped`、Ruff、format、当前树扫描、完整 build、exe help/demo、SHA 和累计 diff 通过。现有历史扫描按已接受的临时 Key 风险真实退出 `1`，因此 tag/Release 继续被阻断，未弱化或伪装通过。集成见 [PR #14](https://github.com/01w-01/SE-agent/pull/14)。
 
 ---
 
@@ -1631,15 +1631,15 @@ Expected: 全部退出 `0`；把命令、版本、通过数量和产物 SHA-256 
 
 保存 pipeline URL、commit SHA、`unit-test` job 名和 pass 时间到 `docs/evidence/ci-last-pass.md`。若无远端或 CI 未 pass，本 task 保持未完成，不用本地结果冒充 CI。
 
-**验收记录（2026-08-12）：** 完整 `main@762b738` 已推送到 NJU GitLab；用户登录后确认 [Pipeline #320523](https://git.nju.edu.cn/wyl510/se-agent/-/pipelines/320523) 的 `unit-test` 为绿色 passed。证据见 `docs/evidence/ci-last-pass.md`。
+**验收记录（2026-08-12）：** 完整 `main@17554b3` 已推送到 NJU GitLab；用户登录后确认 [Pipeline #320523](https://git.nju.edu.cn/wyl510/se-agent/-/pipelines/320523) 的 `unit-test` 为绿色 passed。证据见 `docs/evidence/ci-last-pass.md`。
 
-- [x] **Step 5: 执行已知会失败的历史凭据门禁**
+- [x] **Step 5: 执行历史凭据门禁并完成后续清理**
 
 Run: `pwsh -NoProfile -File scripts/scan-history.ps1`
 
-Expected under current accepted history: exit `1`，只显示 `77da924` 相关 commit/path，不显示 Key。立即停止 Release，不运行历史重写。只有用户以后明确授权修复、Key 已处理且扫描退出 `0`，AC-24 才能勾选。
+Expected: 任何命中均 exit `1` 且只显示 commit/path，不显示 Key；清理后的规范历史必须 exit `0` 且无输出。
 
-**验收记录（2026-08-11）：** 脚本按预期退出 `1`，输出仅含 commit/path 元数据并包含 `77da924`；没有输出匹配内容。未重写历史，AC-24 保持未完成，Release 被阻断。
+**验收记录（2026-08-12）：** 用户明确授权后，使用 `git-filter-repo 2.47.0` 在一次性单分支 mirror 中精确重写 120 个提交；原 head tree 保持一致。GitHub/NJU 通过明确旧 SHA 租约更新，旧 GitHub 遗留分支删除；双端 fresh clone 历史扫描均 exit `0`。AC-24 的规范仓库门禁已通过，平台 cached views/internal PR refs 作为 Support 外部边界单独记录。
 
 - [ ] **Step 6: 检查 WebUI 课程冲突**
 
@@ -1651,7 +1651,7 @@ Expected under current accepted history: exit `1`，只显示 `77da924` 相关 c
 
 仅当离线测试、真实 API、新机、GitLab CI、当前树扫描、历史扫描以及 WebUI 例外/实现均有通过证据时，创建版本 tag 并让 GitHub Actions 发布。任一项失败则保留本地可运行产物，但不创建公开 Release。
 
-**未完成且禁止发布：** GitLab CI 与学校真实 API 冒烟已通过；干净新机、历史零凭据和 WebUI 门禁仍未满足，未创建 tag 或 Release。
+**未完成且禁止发布：** GitLab CI、学校真实 API 冒烟和规范分支历史零凭据已通过；干净新机与 WebUI 门禁仍未满足，未创建 tag 或 Release。
 
 - [x] **Step 8: 更新过程证据并提交**
 

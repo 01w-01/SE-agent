@@ -4,12 +4,12 @@
 
 确认时间：2026-08-12 18:23:34 +08:00
 
-验证基线：`762b738915d1c1aaa0cb2dd1c5d4d9477c29baed`
+验证基线：`17554b3a7155f9a8e624062e762b3a4bd85c943d`
 
 | 必需字段 | 结果 |
 |---|---|
 | Pipeline URL | [NJU GitLab Pipeline #320523](https://git.nju.edu.cn/wyl510/se-agent/-/pipelines/320523) |
-| Pipeline commit SHA | `762b738915d1c1aaa0cb2dd1c5d4d9477c29baed`（推送时本地 HEAD 与 `nju/main` 已核对一致） |
+| Pipeline commit SHA | `17554b3a7155f9a8e624062e762b3a4bd85c943d`（推送时本地 HEAD 与 `nju/main` 已核对一致） |
 | Job 名称 | `unit-test` |
 | 状态 | 绿色 `passed` |
 | Pass 时间 | NJU GitLab 登录用户于上述确认时间核验；匿名 API 被反机器人验证页拦截，未自动读取服务端完成时间 |
