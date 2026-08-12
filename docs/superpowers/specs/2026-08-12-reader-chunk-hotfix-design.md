@@ -1,30 +1,36 @@
-# 高输出 reader 分块性能修复设计
+# 高输出压力测试超时余量修复设计
 
 日期：2026-08-12
 
-## 问题与根因
+## 问题与证据
 
-PR #18 同一提交的 pull_request 检查通过，但 branch push 检查中 `test_runner_bounds_stdout_and_stderr_while_draining_both_pipes` 用时 10.17 秒并触发 10 秒超时。
+PR #18 同一提交的 pull_request 检查通过，但 branch push 检查中 `test_runner_bounds_stdout_and_stderr_while_draining_both_pipes` 用时 10.17 秒，超过该测试人为设置的 10 秒 Harness timeout。
 
-`_TailReader` 当前用 `min(8192, output_tail_limit)` 作为 pipe 读取块。输出尾部上限为 256 时，stdout/stderr 共 2 MB 会产生约 7,800 次读取、诊断扫描和流式脱敏调用。本机连续 5 次测试内部耗时约 7.3–7.6 秒，CI runner 的正常性能波动即可越界。
+系统化实验结果：
 
-## 设计
+- 普通真实 pytest 子进程测试约 3.3 秒；
+- stdout/stderr 各写 1 MB 的压力测试约 7.2 秒；
+- reader 从 256B 改为 8KiB 后，压力测试连续 10 次仍为 7.16–7.28 秒，与修改前 7.3–7.6 秒基本相同。
 
-- 新增私有常量 `_PIPE_READ_CHUNK_BYTES = 8192`。
-- `_TailReader._drain()` 固定以 8 KiB 读取 pipe，不再让保留尾部大小决定 I/O 粒度。
-- `_append_safe()` 继续只保留 `output_tail_chars` 对应的有界尾部；流式脱敏仍发生在原始 chunk 进入 tail 之前。
-- 诊断 overlap、known secrets、双 pipe 并行 drain、线程 join/close 和进程超时语义不变。
-- 不增加 pytest timeout，不减少 1 MB + 1 MB 压力输出，不重构 reader。
+因此，读取调用次数虽存在可优化点，但不是 CI 超时的主要原因。主要额外耗时是 2 MB 输出必须逐字节经过既有多层流式脱敏。8 KiB 生产改动无法可靠解决问题，已撤回且不提交。
 
-## TDD 与验收
+## 修正设计
 
-先新增一个确定性测试，以带 `read(size)` 记录的内存 stream 直接运行 `_TailReader`，要求当 tail limit 为 256 时每次 read 请求仍为 8192。旧实现应得到 256 并 RED；生产改动后转 GREEN。
+- 不修改 `mini-harness/src/fbw_harness/testing.py` 或其他产品代码。
+- 保留 stdout/stderr 各 1 MB 的真实压力输出，继续覆盖双 pipe drain、无死锁、输出有界和尾部保留。
+- 仅把该压力测试构造的 `HarnessConfig.pytest_timeout_seconds` 从 10 提高到 30。
+- 产品默认 pytest timeout 仍为 60 秒；其他成功、失败和 timeout 行为测试不变。
+- 30 秒只提供慢 CI runner 的测试余量，不改变 Harness 的公开配置或运行时默认值。
 
-然后运行：
+## 验证
 
-1. 新增定向测试；
-2. 原真实双 pipe 高输出测试连续 10 次，全部通过且无 timeout；
-3. Task 8 feedback/testing 定向测试；
-4. 全量 pytest、Ruff、format、当前树秘密扫描和 diff check。
+既有 GitHub branch push 失败是本修复的 RED 证据：同一压力测试返回 `timed_out=True`、exit code 124、duration 10.17 秒。修复后必须：
 
-独立 hotfix PR 的 branch push、pull_request 两类检查都必须绿色；合并 main 后 main CI 也必须绿色。随后把 PR #18 rebase 到新 main，让它重新触发两类检查。
+1. 该真实压力测试连续运行 10 次，10/10 passed；
+2. Task 8 testing/feedback 定向测试全部通过；
+3. 全量 pytest、Ruff、format、当前树扫描和 diff check 通过；
+4. 独立 hotfix PR 的 branch push、pull_request 两类检查均绿色；
+5. 合并后 main CI绿色；
+6. PR #18 rebase 到新 main 后两类检查均绿色。
+
+若 30 秒仍超时，不继续提高数值，必须回到架构层分析流式脱敏性能。
