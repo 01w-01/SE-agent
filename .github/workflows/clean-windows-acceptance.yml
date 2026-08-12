@@ -1,0 +1,41 @@
+name: Clean Windows EXE acceptance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  clean-windows-exe:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - name: Scan current tree
+        run: pwsh -NoProfile -File scripts/scan-current-tree.ps1
+      - name: Scan complete history
+        run: pwsh -NoProfile -File scripts/scan-history.ps1
+      - name: Build distribution
+        run: pwsh -NoProfile -File scripts/build.ps1
+      - name: Verify EXE in restricted runtime
+        run: >-
+          pwsh -NoProfile -File scripts/verify-clean-windows.ps1
+          -Artifact dist/fbw-harness.exe
+          -Checksum dist/fbw-harness.exe.sha256
+          -Summary "$env:RUNNER_TEMP/fbw-clean-windows-summary.txt"
+      - name: Stage acceptance summary
+        run: Copy-Item "$env:RUNNER_TEMP/fbw-clean-windows-summary.txt" dist/fbw-clean-windows-summary.txt
+      - name: Upload acceptance artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fbw-harness-clean-windows-${{ github.sha }}
+          path: |
+            dist/fbw-harness.exe
+            dist/fbw-harness.exe.sha256
+            dist/fbw-clean-windows-summary.txt

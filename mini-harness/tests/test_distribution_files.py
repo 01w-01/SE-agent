@@ -165,3 +165,37 @@ def test_github_release_waits_for_tests_and_limits_write_permission_to_tags() ->
     assert "needs: unit-test" in release
     assert re.search(r"(?m)^permissions:\n  contents: read$", text)
     assert re.search(r"(?m)^    permissions:\n      contents: write$", release)
+
+
+def test_clean_windows_acceptance_is_manual_read_only_and_never_releases() -> None:
+    """Catches clean-machine evidence gaining release rights or skipping runtime isolation."""
+    root = repo_root()
+    workflow = (root / ".github/workflows/clean-windows-acceptance.yml").read_text(encoding="utf-8")
+    verifier = (root / "scripts/verify-clean-windows.ps1").read_text(encoding="utf-8")
+
+    assert re.search(r"(?m)^on:\n  workflow_dispatch:\s*$", workflow)
+    assert re.search(r"(?m)^permissions:\n  contents: read$", workflow)
+    assert "runs-on: windows-latest" in workflow
+    assert "scripts/build.ps1" in workflow
+    assert "scripts/verify-clean-windows.ps1" in workflow
+    assert "actions/upload-artifact@v4" in workflow
+    assert "softprops/action-gh-release" not in workflow
+    assert "contents: write" not in workflow
+    assert "fbw-clean-windows-summary.txt" in workflow
+    assert "timeout-minutes: 30" in workflow
+
+    for contract in (
+        "Get-FileHash",
+        "ProcessStartInfo",
+        "ReadToEndAsync",
+        "WaitForExit(120000)",
+        "Kill($true)",
+        "System32",
+        '"--help"',
+        '"demo", "all"',
+        '"credential", "status"',
+        "configured=False",
+        "RUNNER_TEMP",
+        "finally",
+    ):
+        assert contract in verifier
