@@ -30,8 +30,8 @@ def test_gitlab_has_exact_unit_test_job() -> None:
     assert "uv run --project mini-harness pytest" in text
 
 
-def test_history_scan_reports_only_locations_and_blocks_known_history() -> None:
-    """Catches history scanning that leaks a matching credential or ignores a match."""
+def test_history_scan_passes_without_leaking_output() -> None:
+    """Catches a cleaned history that regains a matching credential or leaks output."""
     root = repo_root()
     result = subprocess.run(
         ["pwsh", "-NoProfile", "-File", str(root / "scripts/scan-history.ps1")],
@@ -40,13 +40,9 @@ def test_history_scan_reports_only_locations_and_blocks_known_history() -> None:
         text=True,
         check=False,
     )
-    assert result.returncode == 1
-    assert "sk-" not in result.stdout
-    assert "sk-" not in result.stderr
+    assert result.returncode == 0
+    assert result.stdout == ""
     assert result.stderr == ""
-    lines = [line for line in result.stdout.splitlines() if line]
-    assert lines
-    assert all(re.fullmatch(r"[0-9a-f]{40} [^\r\n]+", line) for line in lines)
 
 
 def test_build_removes_published_artifacts_when_staging_cleanup_fails(tmp_path: Path) -> None:
