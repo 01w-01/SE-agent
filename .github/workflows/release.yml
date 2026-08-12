@@ -57,8 +57,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           body: |
-            Windows x64 single-file CLI distribution.
+            Windows x64 pure CLI single-file distribution; no WebUI is provided.
             Verify `fbw-harness.exe` with `fbw-harness.exe.sha256` before running.
+            Use `credential set` to enter your API Key with hidden input.
+            This binary is unsigned and may trigger Microsoft SmartScreen warnings.
           files: |
             dist/fbw-harness.exe
             dist/fbw-harness.exe.sha256

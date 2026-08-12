@@ -1653,7 +1653,9 @@ Expected: 任何命中均 exit `1` 且只显示 commit/path，不显示 Key；�
 
 仅当离线测试、真实 API、新机、GitLab CI、当前树扫描、历史扫描以及 WebUI 例外/实现均有通过证据时，创建版本 tag 并让 GitHub Actions 发布。任一项失败则保留本地可运行产物，但不创建公开 Release。
 
-**未完成且禁止发布：** GitLab CI、学校真实 API 冒烟和规范分支历史零凭据已通过；干净新机与 WebUI 门禁仍未满足，未创建 tag 或 Release。
+**原始验收记录（已由后续裁决覆盖）：** GitLab CI、学校真实 API 冒烟和规范分支历史零凭据已通过；干净新机与 WebUI 门禁仍未满足，未创建 tag 或 Release。
+
+**发布裁决更新（2026-08-13，用户人工批准）：** 用户改变“WebUI 阻断软件 Release”的裁决。GitHub hosted clean Windows 验收已通过的前提下，`v0.1.0` 可作为纯 CLI 软件发布；不实现 WebUI。WebUI 课程项仍未满足，必须作为课程偏离如实保留，不能据此声称课程交付已完整。
 
 - [x] **Step 8: 更新过程证据并提交**
 
