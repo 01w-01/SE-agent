@@ -363,6 +363,14 @@
 - `.gitlab-ci.yml` 的 `unit-test` 执行当前树扫描、Ruff 与全量 pytest。用户登录后确认 [Pipeline #320523](https://git.nju.edu.cn/wyl510/se-agent/-/pipelines/320523) 为绿色 passed；匿名 API 因反机器人页面无法自动读取。
 - GitLab CI 门禁由 BLOCKED 转为 PASS；真实 API、干净 Windows、历史凭据和 WebUI 有意偏离仍阻断公开 Release。
 
+### 2026-08-12 · P-036 · 学校真实 API 兼容与受控修复
+
+- Superpowers 技能：`brainstorming`、`systematic-debugging`、`writing-plans`、`using-git-worktrees`、`executing-plans`、`test-driven-development`、`verification-before-completion`；worktree `D:\Codes\FBW-worktrees\tool-choice-fallback`，分支 `fix/openai-tool-choice-fallback`，基线 `3f77dc4`。
+- 人工授权与诊断：用户通过隐藏输入配置 CredentialStore，并批准 HTTP 400 兼容方案。普通 chat 与 tools-only 请求成功，而 `tools + tool_choice="required"` 固定返回 400；诊断不输出 Key、响应正文或异常文本。
+- TDD：新增测试在旧实现上 `4 failed`，证明 required 400 不降级、无实例记忆且第二请求未发生；最小实现后选择测试 `4 passed`，完整 LLM/context/parser 为 `124 passed`。默认仍 required；仅精确 400 时当前 client 同轮重发 tools-only 并记忆，新 client 恢复严格模式；其余状态和固定错误边界不变。
+- 真实闭环：一次性 clamp 项目基线 `2 failed, 1 passed`；修复后 `deepseek-v4-flash` 在 2 轮内返回 `COMPLETED`，仅修改 `clamp.py`，独立 pytest `3 passed`，回滚状态完整。
+- 清理与发布裁决：`credential clear` 后状态为 `configured=False`；一次性 `fbw-real-api-*` 目录经系统临时根、直接子目录和固定前缀三重核对后删除。真实 API 门禁转为 PASS；干净 Windows、历史零凭据和 WebUI 有意偏离仍阻断 tag/Release。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |

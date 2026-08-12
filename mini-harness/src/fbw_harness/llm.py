@@ -17,7 +17,7 @@ class LLMDecisionError(Exception):
 
 
 class OpenAICompatibleClient:
-    __slots__ = ("_client", "_max_retries", "_model")
+    __slots__ = ("_client", "_max_retries", "_model", "_use_required_tool_choice")
 
     def __init__(self, *, client: object, model: str, max_retries: int = 2) -> None:
         if not isinstance(model, str) or not model.strip():
@@ -27,6 +27,7 @@ class OpenAICompatibleClient:
         self._client = client
         self._model = model
         self._max_retries = max_retries
+        self._use_required_tool_choice = True
 
     def decide(
         self,
@@ -35,12 +36,7 @@ class OpenAICompatibleClient:
     ) -> RawDecision:
         for attempt in range(self._max_retries + 1):
             try:
-                response = self._client.chat.completions.create(  # type: ignore[attr-defined]
-                    model=self._model,
-                    messages=messages,
-                    tools=tools,
-                    tool_choice="required",
-                )
+                response = self._create_completion(messages, tools)
             except Exception as error:  # noqa: BLE001 - SDK boundary is normalized safely.
                 retry = _is_transient(error) and attempt < self._max_retries
                 failed = True
@@ -58,6 +54,34 @@ class OpenAICompatibleClient:
             if malformed:
                 raise LLMDecisionError(_DECISION_ERROR) from None
         raise AssertionError("unreachable")
+
+    def _create_completion(
+        self,
+        messages: list[dict[str, object]],
+        tools: list[dict[str, object]],
+    ) -> object:
+        if not self._use_required_tool_choice:
+            return self._client.chat.completions.create(  # type: ignore[attr-defined]
+                model=self._model,
+                messages=messages,
+                tools=tools,
+            )
+        try:
+            return self._client.chat.completions.create(  # type: ignore[attr-defined]
+                model=self._model,
+                messages=messages,
+                tools=tools,
+                tool_choice="required",
+            )
+        except Exception as error:
+            if not _has_http_status(error, 400):
+                raise
+        self._use_required_tool_choice = False
+        return self._client.chat.completions.create(  # type: ignore[attr-defined]
+            model=self._model,
+            messages=messages,
+            tools=tools,
+        )
 
 
 class OpenAIClientFactory:
@@ -138,3 +162,11 @@ def _is_transient(error: Exception) -> bool:
     except Exception:  # noqa: BLE001 - exception metadata is an untrusted SDK boundary.
         return False
     return type(status_code) is int and (status_code == 429 or 500 <= status_code <= 599)
+
+
+def _has_http_status(error: Exception, expected: int) -> bool:
+    try:
+        status_code = getattr(error, "status_code", None)
+    except Exception:  # noqa: BLE001 - exception metadata is an untrusted SDK boundary.
+        return False
+    return type(status_code) is int and status_code == expected
