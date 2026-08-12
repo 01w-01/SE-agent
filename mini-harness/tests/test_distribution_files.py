@@ -34,7 +34,14 @@ def test_history_scan_passes_without_leaking_output() -> None:
     """Catches a cleaned history that regains a matching credential or leaks output."""
     root = repo_root()
     result = subprocess.run(
-        ["pwsh", "-NoProfile", "-File", str(root / "scripts/scan-history.ps1")],
+        [
+            "pwsh",
+            "-NoProfile",
+            "-File",
+            str(root / "scripts/scan-history.ps1"),
+            "-Revision",
+            "HEAD",
+        ],
         cwd=root,
         capture_output=True,
         text=True,
@@ -43,6 +50,46 @@ def test_history_scan_passes_without_leaking_output() -> None:
     assert result.returncode == 0
     assert result.stdout == ""
     assert result.stderr == ""
+
+
+def test_history_scan_can_limit_revision_without_weakening_default(tmp_path: Path) -> None:
+    """Keeps release scans on all refs while allowing CI to verify canonical HEAD."""
+    root = tmp_path / "repo"
+    root.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=root, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=root, check=True)
+    (root / "safe.txt").write_text("safe\n", encoding="utf-8")
+    subprocess.run(["git", "add", "safe.txt"], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-m", "safe"], cwd=root, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "switch", "-c", "internal-old-ref"], cwd=root, check=True, capture_output=True
+    )
+    (root / "old.txt").write_text("sk-" + "syntheticsecret12345", encoding="utf-8")
+    subprocess.run(["git", "add", "old.txt"], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-m", "old"], cwd=root, check=True, capture_output=True)
+    subprocess.run(["git", "switch", "main"], cwd=root, check=True, capture_output=True)
+
+    script = str(repo_root() / "scripts/scan-history.ps1")
+    all_refs = subprocess.run(
+        ["pwsh", "-NoProfile", "-File", script],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    head_only = subprocess.run(
+        ["pwsh", "-NoProfile", "-File", script, "-Revision", "HEAD"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert all_refs.returncode == 1
+    assert head_only.returncode == 0
+    assert head_only.stdout == ""
+    assert head_only.stderr == ""
 
 
 def test_build_removes_published_artifacts_when_staging_cleanup_fails(tmp_path: Path) -> None:
