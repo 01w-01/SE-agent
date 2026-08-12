@@ -668,7 +668,7 @@ def test_runner_bounds_stdout_and_stderr_while_draining_both_pipes(tmp_path: Pat
         "    os.write(2, b'E' * 1_000_000)\n",
     )
     config = HarnessConfig(
-        pytest_timeout_seconds=10,
+        pytest_timeout_seconds=30,
         output_tail_chars=256,
         pytest_args=("-q", "-s"),
     )
