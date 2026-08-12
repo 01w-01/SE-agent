@@ -356,6 +356,13 @@
 - 权衡：独立空缓存使全量耗时增加，单次 feedback 约 14–16 秒，仍低于固定 60 秒 pytest 超时；未扩大安全边界或修改用户项目缓存。
 - 分支已推送；hotfix PR：[PR #16](https://github.com/01w-01/SE-agent/pull/16)。
 
+### 2026-08-12 · P-035 · NJU GitLab 提交与 CI 证据
+
+- 用户提供空 NJU Git 仓库并授权生成专用 Ed25519 密钥；公钥登记后只读 SSH 验证通过。私钥不进入仓库、日志或输出。
+- 用户明确知晓完整历史含临时 API Key，并授权推送至 NJU Git；`main@762b738` 已推送，且本地 HEAD 与 `nju/main` 核对一致。
+- `.gitlab-ci.yml` 的 `unit-test` 执行当前树扫描、Ruff 与全量 pytest。用户登录后确认 [Pipeline #320523](https://git.nju.edu.cn/wyl510/se-agent/-/pipelines/320523) 为绿色 passed；匿名 API 因反机器人页面无法自动读取。
+- GitLab CI 门禁由 BLOCKED 转为 PASS；真实 API、干净 Windows、历史凭据和 WebUI 有意偏离仍阻断公开 Release。
+
 ## 3. 当前关键决定
 
 | 决定 | 来源/责任 | 状态 |
