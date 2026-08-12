@@ -1,8 +1,12 @@
+param(
+    [string[]]$Revision = @("--all")
+)
+
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $false
 
 try {
-    $commits = & git rev-list --all 2>$null
+    $commits = & git rev-list @Revision 2>$null
     $revListExitCode = $LASTEXITCODE
     if ($revListExitCode -ne 0) {
         throw "git rev-list failed"
