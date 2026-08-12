@@ -8,7 +8,7 @@
 
 完成必须同时满足：
 
-1. 重写前后的 `main` 当前文件树对象完全一致，正常项目文件不增删、不改变；
+1. 在历史转换检查点，重写前后的 `main` 文件树对象完全一致，证明转换只修改旧 blob；随后允许单独提交审计文档中的新 SHA 映射和最终证据；
 2. 当前树扫描、历史扫描、全量 pytest、Ruff 全部通过；
 3. GitHub 与 NJU GitLab 的 `main` 均指向同一个重写后提交；
 4. GitHub 旧远端分支 `task/14-final-evidence` 不再引用旧历史；
@@ -20,7 +20,7 @@
 
 ## 2. 已知范围
 
-- 当前基线为 `main@4305dd6a4711d7401176a66bf038af9ce5af9dff`，GitHub/NJU `main` 一致；仓库无 tag。
+- 调查基线为 `main@4305dd6a4711d7401176a66bf038af9ce5af9dff`，GitHub/NJU `main` 一致；仓库无 tag。设计与执行计划必须先通过普通 PR 合并并经双端 CI，清理执行以该合并后的新 `main` 为唯一基线。
 - 历史扫描只输出 commit/path 元数据，已确认命中早期 `detect-api.ps1`、`mini-harness/agent.py`，以及两个后来已修正但旧 blob 仍存在的测试文件。
 - 当前树扫描已通过，因此不能通过修改当前文件解决。
 - GitHub 仍有旧远端分支 `task/14-final-evidence`；NJU 只有 `main`。
@@ -42,7 +42,7 @@
 
 历史转换在 OS 临时目录下的全新镜像 clone 中执行。使用 `uvx` 临时运行固定版本的 `git-filter-repo`，不进行全局安装；记录实际版本。
 
-当前 `D:\Codes\FBW` 在远端更新验证完成前保持原样，三份未跟踪进度文件不进入镜像、历史或备份。
+当前 `D:\Codes\FBW` 在远端更新验证完成前保持原样，三份未跟踪进度文件不进入镜像、历史或备份。设计/计划 worktree 在普通 PR 合并后先清理，防止其旧分支引用在本机保留待清理历史。
 
 ### 4.2 一次性备份
 
@@ -74,7 +74,6 @@
 重写后必须满足：
 
 - 新 `main^{tree}` 与原始 tree object ID 完全相同；
-- `git diff <原始-main> <新-main> --` 无输出；
 - commit 数量、首尾提交信息和合并拓扑检查无异常；
 - `scripts/scan-current-tree.ps1` exit 0；
 - `scripts/scan-history.ps1` exit 0；
@@ -82,6 +81,8 @@
 - Ruff exit 0。
 
 任一不变量失败时，停止在本地，不推送任何远端。
+
+历史转换会改变受影响提交及其后代 SHA。转换成功后读取 `git-filter-repo` 的 commit map，在新的干净历史上另建证据分支，机械更新受版本控制 Markdown 中对旧 commit SHA 的引用。替换只接受 commit map 中的完整 SHA 或唯一七位前缀，且必须按十六进制 token 边界匹配；非 commit 哈希、PR 编号和文件内容不得改变。该后续文档提交不属于“转换前后 tree 相同”的证明对象。
 
 ## 6. 双远端更新
 
@@ -134,6 +135,7 @@ GitHub 官方说明：仅重写并强推分支后，旧提交仍可能通过 com
 - GitHub 新 `main` 必须等待 workflow 绿色。
 - NJU 新 `main` 必须由用户登录后确认最新 pipeline 绿色。
 - 更新 `PLAN.md`、`AGENT_LOG.md`、`README.md`、`docs/evidence/release-checklist.md` 与 `docs/evidence/ci-last-pass.md`，记录新 SHA、扫描通过、双端 CI 与平台缓存边界。
+- 使用 commit map 更新所有受版本控制 Markdown 中引用的旧 commit SHA；验证文档不再引用 commit map 的旧 SHA token，再通过普通证据 PR 合并。
 - 不创建 tag/Release，直到干净 Windows 和 WebUI 有意偏离等剩余门禁另行裁决。
 - 不在任何文档、命令输出或 Support 元数据中回显 Key 原文。
 
