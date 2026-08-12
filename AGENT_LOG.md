@@ -470,3 +470,11 @@
 - 方案选择：用户选择纯 CLI 发布方案；不实现 WebUI，不把课程偏离误报为课程项完成。
 - 设计/计划提交：`4d906c7 docs: 设计 v0.1.0 课程交付发布`、`1d3ef18 docs: 规划 v0.1.0 课程交付发布`。
 - 人工批准：用户于 2026-08-13 批准 `v0.1.0` 纯 CLI 软件 Release；GitHub hosted clean Windows Run `31616841988` 为软件发布 PASS。二进制未签名、SmartScreen、实体体验和 WebUI 课程项均如实保留；tag 与 GitHub Release 尚未执行。
+
+### 2026-08-13 · P-038 · v0.1.0 tag、Release 与下载验收
+
+- 技能与方法：Task 1 按 `test-driven-development` 先完成 Release body 合同 RED（`1 failed, 8 deselected`），最小修改后 GREEN（`9 passed`）；随后完成两次独立只读审查。Task 4 文档回写仅引用 Task 1–3 的已验证报告，不记录凭据内容、请求头或真实 API 正文。
+- 发布准备：`ee4a61c release: 准备 v0.1.0 纯 CLI 发布` 经 [PR #24](https://github.com/01w-01/SE-agent/pull/24) 合并为 `main@f61bf48684ca0ada9de8ac00644ff7d2e68dc60b`；用户已人工批准纯 CLI 软件发布，WebUI 课程偏离继续保留。
+- tag 与 workflow：annotated tag 对象为 `b602450f861a078afcf291ec9a4412670f04895a`，目标提交为 `f61bf48684ca0ada9de8ac00644ff7d2e68dc60b`；[Run 31624847385](https://github.com/01w-01/SE-agent/actions/runs/31624847385) 的 `unit-test` 与 `release` 均成功，并生成 [Release v0.1.0](https://github.com/01w-01/SE-agent/releases/tag/v0.1.0)。
+- 下载复核：附件集合为 `fbw-harness.exe`、`fbw-harness.exe.sha256`；SHA-256 为 `b96abc383ce2cee995298ca7394e3e5862b58b245fbbd9490007576e29350fed`，大小 `20160138` bytes；`--help` 与 `demo all` 均 exit 0，三个 demo PASS。两次 `credential status` 均为 `configured=True`；用户裁决保留现有状态，未回显或变更凭据内容。受控下载目录已清理（`CLEANED=True`）。
+- 双端与收口状态：本记录仅完成 Task 4 Steps 1–3；证据 PR、GitHub/NJU main 与 tag 同步、NJU pipeline 确认及发布 worktree 清理均尚未执行，不声称两端已一致。

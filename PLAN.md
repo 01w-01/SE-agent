@@ -1657,6 +1657,8 @@ Expected: 任何命中均 exit `1` 且只显示 commit/path，不显示 Key；�
 
 **发布裁决更新（2026-08-13，用户人工批准）：** 用户改变“WebUI 阻断软件 Release”的裁决。GitHub hosted clean Windows 验收已通过的前提下，`v0.1.0` 可作为纯 CLI 软件发布；不实现 WebUI。WebUI 课程项仍未满足，必须作为课程偏离如实保留，不能据此声称课程交付已完整。
 
+**v0.1.0 发布事实（2026-08-13）：** 发布准备由 [PR #24](https://github.com/01w-01/SE-agent/pull/24) 合并至 `main@f61bf48684ca0ada9de8ac00644ff7d2e68dc60b`；annotated tag `v0.1.0` 的对象为 `b602450f861a078afcf291ec9a4412670f04895a`，已触发成功的 [Release workflow](https://github.com/01w-01/SE-agent/actions/runs/31624847385) 并生成 [GitHub Release](https://github.com/01w-01/SE-agent/releases/tag/v0.1.0)。独立下载复核的 SHA-256、EXE 冒烟与清理结论见 `docs/evidence/release-v0.1.0.md`。这只记录已批准的纯 CLI 软件发布，不勾选 Step 6 的 WebUI 课程冲突，也不代写或完成 `REFLECTION.md`。
+
 - [x] **Step 8: 更新过程证据并提交**
 
 在 `PLAN.md` 标记完成项和 commit/PR，在 `AGENT_LOG.md` 记录技能、agent、人工干预和验证输出。不得把 `REFLECTION.md` 交给 AI 代写。

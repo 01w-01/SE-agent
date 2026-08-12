@@ -8,7 +8,7 @@ FBW 是面向 Windows 的 Python Coding Agent Harness。它把 OpenAI 兼容 LLM
 
 ### Windows x64 发行物（无需安装 Python）
 
-从 GitHub Release 下载 `fbw-harness.exe` 与 `fbw-harness.exe.sha256` 到同一目录，并在 PowerShell 复核：
+从 [GitHub Release v0.1.0](https://github.com/01w-01/SE-agent/releases/tag/v0.1.0) 下载 `fbw-harness.exe` 与 `fbw-harness.exe.sha256` 到同一目录，并在 PowerShell 复核：
 
 ```powershell
 $expected = (Get-Content .\fbw-harness.exe.sha256).Split()[0]
@@ -21,7 +21,7 @@ if ($actual -ne $expected) { throw 'SHA-256 verification failed' }
 
 ### v0.1.0 发布状态
 
-用户已于 2026-08-13 批准发布纯 CLI 的 `v0.1.0`：不提供 WebUI，未签名和 SmartScreen 风险保持不变。仅在 tag 创建并实际生成 GitHub Release 后才会提供 Release URL；在此之前不得伪造或暗示该 URL 已存在。
+用户已于 2026-08-13 批准并完成纯 CLI `v0.1.0` 发布：[GitHub Release](https://github.com/01w-01/SE-agent/releases/tag/v0.1.0)。不提供 WebUI，未签名和 SmartScreen 风险保持不变；下载后请先按上述步骤校验 SHA-256。完整发布事实见[发布证据](docs/evidence/release-v0.1.0.md)。
 
 ### 源码方式（开发与测试）
 
