@@ -61,7 +61,7 @@ git diff --check
 
 Expected: 全部 exit 0。
 
-- [ ] **Step 6: 提交、PR 与真实 workflow**
+- [x] **Step 6: 提交、PR 与真实 workflow**
 
 提交 `ci: 添加干净 Windows EXE 验收`，创建 PR；branch/pull_request CI 绿色后合并。用 `gh workflow run clean-windows-acceptance.yml --ref main` 手动触发；必须等待 build、SHA、三个 EXE 命令和 artifact 全部绿色。
 
@@ -78,15 +78,15 @@ Expected: 全部 exit 0。
 - Consumes: 手动 workflow run URL、main SHA、artifact 名称和步骤结论。
 - Produces: 明确区分 PASS 与未覆盖范围的课程验收证据。
 
-- [ ] **Step 1: 写证据**
+- [x] **Step 1: 写证据**
 
 记录 workflow URL、main SHA、runner、build/SHA/help/demo/status/artifact 结论；将“GitHub hosted clean Windows EXE”改为 PASS。SmartScreen、实体 Windows 10/11、交互凭据和真实 API 保持未覆盖；不记录环境详情或秘密。
 
-- [ ] **Step 2: 更新发布结论**
+- [x] **Step 2: 更新发布结论**
 
 README/PLAN/AGENT_LOG/清单明确：云端离线 EXE 验收已通过；WebUI 有意偏离仍阻止声称课程清单完全满足。是否创建 tag/Release仍需用户单独决定。
 
-- [ ] **Step 3: 验证并提交**
+- [x] **Step 3: 验证并提交**
 
 运行双扫描、分发合同、Ruff、diff check；提交 `docs: 记录干净 Windows EXE 验收`，推送同一分支或后续小 PR，并等待 GitHub CI绿色。
 

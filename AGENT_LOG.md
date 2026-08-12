@@ -452,3 +452,14 @@
 - GitHub fresh clone：双扫描 PASS、`754 passed, 1 skipped`、Ruff PASS；NJU fresh clone：双扫描 PASS；根仓库切换后双扫描、`754 passed, 1 skipped`、Ruff PASS；
 - 本地旧 refs/reflog/对象已清除；临时 bundle/mirror 保留到证据 PR 合并与最终双端验证后再删除；
 - 不记录 Key、匹配文本、请求头或历史 blob 内容；GitHub cached views/internal PR refs 保持 Support 外部边界。
+
+## 8. GitHub hosted 干净 Windows EXE 验收（2026-08-13）
+
+- 用户批准方案 A：用手动 GitHub hosted `windows-latest` 验收，不创建 tag/Release；
+- 设计 `a6c6351`、计划 `a42b0ad`；TDD 合同从缺文件 RED 转为分发合同 GREEN；
+- 实现提交 `cfe07dc`，独立审查发现双 pipe/无超时 Important；以异步并发排空、单命令 120 秒、进程树终止和 workflow 30 分钟兜底修复于 `6851c7e`；
+- PR #22 一次现有真实 pytest 子进程在 10 秒边界超时；仅将普通真实子进程测试 helper 调至 30 秒，专门的 1 秒 timeout 测试不变，提交 `3f6e64a`；
+- PR #22 两类 CI 绿色后合并为 `main@ab3a74f`；
+- 手动 [Run 31616841988](https://github.com/01w-01/SE-agent/actions/runs/31616841988) 全绿：双扫描、构建、受限 PATH EXE、SHA、help、demo、两次无凭据 status、artifact；
+- artifact：`fbw-harness-clean-windows-ab3a74fe0e76503b465d082437b8b487a5a3d548`，3 文件，artifact ID `9149681946`；
+- 未使用 Key，不执行真实 API，不创建凭据、tag 或 Release；SmartScreen、实体 Windows 10/11 和交互凭据保持未覆盖。

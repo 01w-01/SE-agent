@@ -127,7 +127,8 @@ API Key 仅由 Windows Credential Manager 保存；CLI、配置、JSONL、记忆
 - PyInstaller 产物尚未代码签名，需处理 SmartScreen 提示并自行复核 SHA-256。
 - 路径与哈希检查不能消除本地恶意进程的 TOCTOU 风险。
 - 早期 Git 历史中的临时学校 API Key 已通过精确历史重写清理；GitHub/NJU fresh clone 的 `scripts/scan-history.ps1` 均退出 `0`。GitHub cached views/internal PR refs 的永久清理由平台 Support 控制，不属于规范分支扫描范围。
-- 学校真实 API 已用隐藏录入的临时凭据完成一次受控 clamp 修复：`deepseek-v4-flash` 在 2 轮内仅修改 `clamp.py`，独立 pytest 为 `3 passed`。NJU GitLab `unit-test` 已有绿色证据；但尚无干净 Windows 目标机证据，课程方也未书面豁免 WebUI，因此本仓库仍不可发布。
+- GitHub hosted 全新 Windows runner 已完成单文件 EXE 的 SHA、受限 PATH、`--help`、`demo all`、无凭据 `credential status` 与 artifact 验收；详见 [验收证据](docs/evidence/clean-windows-exe.md)。该自动化不覆盖 Explorer SmartScreen、实体 Windows 10/11、交互式凭据写入或真实 API。
+- 学校真实 API 已用隐藏录入的临时凭据完成一次受控 clamp 修复：`deepseek-v4-flash` 在 2 轮内仅修改 `clamp.py`，独立 pytest 为 `3 passed`。NJU GitLab `unit-test` 已有绿色证据；课程方仍未书面豁免 WebUI，因此本仓库仍不可发布。
 
 ## 第三方依赖与许可证
 
