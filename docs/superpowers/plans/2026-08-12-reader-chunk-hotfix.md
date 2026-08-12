@@ -27,11 +27,11 @@
 - Consumes: `HarnessConfig(pytest_timeout_seconds=...)` 与真实 `HarnessTestRunner`。
 - Produces: 2 MB 双 pipe 压力测试在慢 Windows CI 上仍有界完成；产品接口不变。
 
-- [ ] **Step 1: 记录 RED 证据**
+- [x] **Step 1: 记录 RED 证据**
 
 GitHub Actions run `31596557096`：目标测试 `timed_out=True`、exit 124、duration 10.17 秒；同提交 pull_request run 通过，表明是测试预算边界而非文档行为变更。
 
-- [ ] **Step 2: 做唯一测试变更**
+- [x] **Step 2: 做唯一测试变更**
 
 ```python
 config = HarnessConfig(
@@ -41,11 +41,11 @@ config = HarnessConfig(
 )
 ```
 
-- [ ] **Step 3: 连续运行压力测试 10 次**
+- [x] **Step 3: 连续运行压力测试 10 次**
 
 循环执行目标 test node，记录 exit code 与 wall time。Expected: 10/10 passed、无 timeout。
 
-- [ ] **Step 4: 运行完整门禁**
+- [x] **Step 4: 运行完整门禁**
 
 ```powershell
 uv run --project mini-harness pytest mini-harness/tests/test_testing_feedback.py -q
