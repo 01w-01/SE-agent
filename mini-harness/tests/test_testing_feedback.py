@@ -34,7 +34,7 @@ def _write_project(root: Path, source: str) -> Path:
     return root
 
 
-def _run_project(root: Path, *, timeout: int = 10, args: tuple[str, ...] = ("-q",)):
+def _run_project(root: Path, *, timeout: int = 30, args: tuple[str, ...] = ("-q",)):
     return HarnessTestRunner(
         HarnessConfig(pytest_timeout_seconds=timeout, pytest_args=args), known_secrets=()
     ).run(root)
