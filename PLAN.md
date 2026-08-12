@@ -1631,7 +1631,7 @@ Expected: 全部退出 `0`；把命令、版本、通过数量和产物 SHA-256 
 
 保存 pipeline URL、commit SHA、`unit-test` job 名和 pass 时间到 `docs/evidence/ci-last-pass.md`。若无远端或 CI 未 pass，本 task 保持未完成，不用本地结果冒充 CI。
 
-**验收记录（2026-08-12）：** 完整 `main@17554b3` 已推送到 NJU GitLab；用户登录后确认 [Pipeline #320523](https://git.nju.edu.cn/wyl510/se-agent/-/pipelines/320523) 的 `unit-test` 为绿色 passed。证据见 `docs/evidence/ci-last-pass.md`。
+**验收记录（2026-08-12）：** 用户登录后确认 [Pipeline #320523](https://git.nju.edu.cn/wyl510/se-agent/-/pipelines/320523) 的 `unit-test` 为绿色 passed。Pipeline 当时记录原 SHA `762b738`；历史重写后其内容映射为 `17554b3`，但不声称旧 Pipeline 在新 SHA 上重新执行。证据见 `docs/evidence/ci-last-pass.md`。
 
 - [x] **Step 5: 执行历史凭据门禁并完成后续清理**
 
