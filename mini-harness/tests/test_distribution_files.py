@@ -167,6 +167,21 @@ def test_github_release_waits_for_tests_and_limits_write_permission_to_tags() ->
     assert re.search(r"(?m)^    permissions:\n      contents: write$", release)
 
 
+def test_release_workflow_documents_cli_security_boundaries() -> None:
+    """Catches release notes that omit the approved CLI security boundaries."""
+    workflow = (repo_root() / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    for required in (
+        "Windows x64",
+        "pure CLI",
+        "credential set",
+        "unsigned",
+        "no WebUI",
+        "fbw-harness.exe",
+        "fbw-harness.exe.sha256",
+    ):
+        assert required in workflow
+
+
 def test_clean_windows_acceptance_is_manual_read_only_and_never_releases() -> None:
     """Catches clean-machine evidence gaining release rights or skipping runtime isolation."""
     root = repo_root()

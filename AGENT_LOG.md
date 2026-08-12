@@ -463,3 +463,10 @@
 - 手动 [Run 31616841988](https://github.com/01w-01/SE-agent/actions/runs/31616841988) 全绿：双扫描、构建、受限 PATH EXE、SHA、help、demo、两次无凭据 status、artifact；
 - artifact：`fbw-harness-clean-windows-ab3a74fe0e76503b465d082437b8b487a5a3d548`，3 文件，artifact ID `9149681946`；
 - 未使用 Key，不执行真实 API，不创建凭据、tag 或 Release；SmartScreen、实体 Windows 10/11 和交互凭据保持未覆盖。
+
+### 2026-08-13 · P-037 · v0.1.0 纯 CLI 发布裁决
+
+- Brainstorming：已完成发布收口讨论，明确区分软件发布可用性与课程 WebUI 完整性。
+- 方案选择：用户选择纯 CLI 发布方案；不实现 WebUI，不把课程偏离误报为课程项完成。
+- 设计/计划提交：`4d906c7 docs: 设计 v0.1.0 课程交付发布`、`1d3ef18 docs: 规划 v0.1.0 课程交付发布`。
+- 人工批准：用户于 2026-08-13 批准 `v0.1.0` 纯 CLI 软件 Release；GitHub hosted clean Windows Run `31616841988` 为软件发布 PASS。二进制未签名、SmartScreen、实体体验和 WebUI 课程项均如实保留；tag 与 GitHub Release 尚未执行。
