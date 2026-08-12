@@ -40,7 +40,7 @@
 
 - Superpowers 技能：`brainstorming`（本次提交是用户明确要求的仓库准备动作）。
 - 关键 prompt/context：提交一开始的文件，提交信息 `init`；不提交 `docs/` 进度文件；忽略 `docs/temp.md`。
-- 输出/commit：创建根提交 `77da924 init`；更新忽略规则。
+- 输出/commit：创建根提交 `938b1b8 init`；更新忽略规则。
 - subagent：未使用。
 - 人工干预：提交范围和 message 均由用户指定。
 - 教训：该提交纳入了早期脚本中的临时 API Key，导致 Git 历史不满足正式课程凭据规则；未经用户明确授权不得擅自重写历史。
@@ -68,7 +68,7 @@
 - Superpowers 技能：`brainstorming`。
 - 关键 prompt/context：分节确认架构、数据流、安全、错误、停机、测试和三项 Mock 机制演示。
 - 输出：`docs/superpowers/specs/2026-08-08-coding-agent-harness-demo-design.md`。
-- subagent/commit：未使用 subagent；`b773647 docs: 添加 Coding Agent Harness demo 设计`。
+- subagent/commit：未使用 subagent；`521e990 docs: 添加 Coding Agent Harness demo 设计`。
 - 人工干预：用户连续批准模块化状态机、数据流、安全默认值和测试矩阵。
 - 教训：该文档足以作为设计输入，但缺少课程正式 SPEC 的 INVEST、逐功能规约、凭据安全、分发和冲突治理，不能冒充正式交付物。
 
@@ -86,7 +86,7 @@
 - Superpowers 技能：`using-superpowers`、`brainstorming`、`receiving-code-review`；明确未调用 `writing-plans`。
 - 关键 prompt/context：首版保持纯 CLI，但结构允许未来增加 WebUI；临时 Key 历史保持不动且当前不公开；解释并重新决定 main/worktree/PR。
 - 输出：将 CLI 收敛为入口适配器，增加 ApplicationService、EventSink、ApprovalProvider 边界；更新凭据风险状态和编码阶段 Git 工作流。
-- subagent/commit：未使用 subagent；基于 `b5f3d72` 修订正式文档。
+- subagent/commit：未使用 subagent；基于 `c9b176e` 修订正式文档。
 - 人工干预：用户接受当前私有阶段 Key 风险；决定现有历史不动，从正式编码开始使用 branch + worktree + PR。
 - 教训：为未来扩展预留的是稳定接口和依赖方向，不是空目录或无行为占位代码；文档阶段直接提交 main 不必强迫未来编码继续偏离课程流程。
 
@@ -150,7 +150,7 @@
 
 - Superpowers 技能：`using-superpowers`、`executing-plans`、`test-driven-development`；恢复冷启动 Gate 2 前的批准门禁。
 - 关键 prompt/context：用户明确回复“批准”；修订只改变 Task 1 测试读取 Git 路径的编码与分隔方式，不改变产品 SPEC 或 Task 接口。
-- 输出：PLAN Gate 4 再次标记完成；准备把 `5ac9b97` 及本次批准证据同步到保留未提交 Task 1 产物的冷启动 worktree。
+- 输出：PLAN Gate 4 再次标记完成；准备把 `9ed5d90` 及本次批准证据同步到保留未提交 Task 1 产物的冷启动 worktree。
 - 安全边界：继续保留不提交、不合并、限定 Task 1/2 文件和命令的约束；Task 1 全绿前不进入 Task 2。
 
 ### 2026-08-09T01:45:00+08:00 · P-017 · Task 1/2 独立评审未通过
@@ -168,7 +168,7 @@
 
 - Superpowers 技能：`using-superpowers`、`using-git-worktrees`、`systematic-debugging`；按既有冷启动流程恢复现场并验证条件。
 - 关键 prompt/context：用户要求电脑重启后先检查 Git、worktree 和未完成任务；若无影响，即视为批准集中修订后的 `PLAN.md`。
-- 恢复证据：`main=e09cb62`，`cold-start/claude-spec-plan=b04511a`；冷启动未提交文件清单与重启前一致；两处均无 Git 索引锁；无遗留 Claude/uv/Python 任务。
+- 恢复证据：`main=0355702`，`cold-start/claude-spec-plan=e03dc7e`；冷启动未提交文件清单与重启前一致；两处均无 Git 索引锁；无遗留 Claude/uv/Python 任务。
 - 验证输出：冷启动现状全量 pytest 为 `19 passed`，ruff 为 `All checks passed!`，正常路径凭据扫描退出 `0`。
 - 人工干预：恢复条件满足，用户的条件式批准正式生效；PLAN Gate 4 标记完成。批准不改变 Gate 2 未通过的结论，也不授权提交或合并试做代码。
 - 下一步：把批准证据同步到保留现场，在同一可舍弃 worktree 按新版测试执行 RED—GREEN 修复，再做独立复审。
@@ -190,16 +190,16 @@
 - worktree：`.worktrees` 路径偏差已纠正为 PLAN 指定的 sibling worktree `D:\Codes\FBW-worktrees\task-01`；在独立 `task/01-package-skeleton` 分支执行。
 - RED/GREEN 证据：先观察到未声明 pytest，继而观察到包缺失、旧原型命中与扫描器缺失；扫描器额外覆盖 Git 不可用、Git executable 不在 PATH、原生命令错误处理开启，以及真实临时 Git 仓库命中分支。命中分支临时破坏后，测试按预期因错误退出码和错误输出失败；撤回破坏后恢复绿色。
 - 验证：定向 smoke 与全量 pytest 均为 `6 passed`；Ruff、正常当前树扫描和 `git diff --check` 通过。
-- 提交：实现 `c5ed568 chore: 建立安全项目骨架`；review-fix `1c8c001 test: 覆盖秘密扫描命中分支`。
+- 提交：实现 `7d9a5be chore: 建立安全项目骨架`；review-fix `afdca2d test: 覆盖秘密扫描命中分支`。
 - 评审：1 个 Important（真实临时 Git 仓库命中分支缺覆盖）已在 fix round 1 修复；命名 Minor 延后处理。未记录凭据内容。
 - 分支已推送；PR：[PR #1](https://github.com/01w-01/SE-agent/pull/1)。
 
 ### 2026-08-09 · P-021 · 正式 Task 2 核心契约实现与两轮修复
 
 - Superpowers 技能：`using-git-worktrees`、`subagent-driven-development`、`test-driven-development`、`receiving-code-review`、`requesting-code-review`、`verification-before-completion`。
-- worktree：`D:\Codes\FBW-worktrees\task-02`；分支 `task/02-core-contracts`，基线 `bf8b053`。Task brief 抽取遗漏 §1 端口签名和部分固定字段后，控制器从已批准 SPEC/PLAN 与冷启动证据生成忽略的补充契约，再恢复同一 Task，没有扩大产品范围。
+- worktree：`D:\Codes\FBW-worktrees\task-02`；分支 `task/02-core-contracts`，基线 `23d1788`。Task brief 抽取遗漏 §1 端口签名和部分固定字段后，控制器从已批准 SPEC/PLAN 与冷启动证据生成忽略的补充契约，再恢复同一 Task，没有扩大产品范围。
 - RED/GREEN：首次 RED 为缺少 `fbw_harness.errors`；实现后补充 `SessionState.touched_files` 规范化 RED。首轮 review 指出 Action 把“非空”误作“非空白”；修复后复审又发现非字符串类型被放过，均先写精确失败测试再最小修复。
-- 提交：`901533a feat: 定义 Harness 核心契约`、`3f75989 fix: 修正 Action 非空校验`、`37e28ee fix: 收紧 Action 字段类型校验`。
+- 提交：`5fe4055 feat: 定义 Harness 核心契约`、`d3d261b fix: 修正 Action 非空校验`、`4ad9a25 fix: 收紧 Action 字段类型校验`。
 - 最终验证：模型测试 `59 passed`、全量 `65 passed`、Ruff、累计 `git diff --check` 均通过；独立 reviewer 最终为 0 Critical、0 Important、0 Minor，`APPROVED`。
 - 安全与边界：只修改 Task 2 四个白名单文件；没有真实 I/O、CLI、Workspace、Parser、Policy 或 `ApplicationService` 提前实现；凭据内容未写入源码、报告或新提交。
 - 分支已推送；PR：[PR #2](https://github.com/01w-01/SE-agent/pull/2)。
@@ -207,9 +207,9 @@
 ### 2026-08-09 · P-022 · 正式 Task 3 声明式安全配置
 
 - Superpowers 技能：`using-git-worktrees`、`subagent-driven-development`、`test-driven-development`、`receiving-code-review`、`requesting-code-review`、`verification-before-completion`。
-- worktree：`D:\Codes\FBW-worktrees\task-03`；分支 `task/03-config-entry`，基线 `251d0ad`。基线全量测试为 `65 passed`。
+- worktree：`D:\Codes\FBW-worktrees\task-03`；分支 `task/03-config-entry`，基线 `89182fa`。基线全量测试为 `65 passed`。
 - RED/GREEN：首次 RED 为缺少 `fbw_harness.config`；实现配置优先级、白名单、类型/正整数和 pytest 参数校验后定向 `19 passed`。独立 review 指出非 UTF-8 异常、文件错误字段标识和 pytest `@argfile` 绕过三项 Important；控制器验证 pytest 8.4.2 的 `fromfile_prefix_chars='@'` 后进入 fix round 1。
-- 修复：新增 9 个真实边界测试，先观察 `19 passed, 9 failed`，再统一安全错误并拒绝 `@argfile`；提交 `a9a3586 fix: 收紧配置文件与 pytest 参数边界`。原实现提交为 `81e6c58 feat: 添加声明式安全配置`。
+- 修复：新增 9 个真实边界测试，先观察 `19 passed, 9 failed`，再统一安全错误并拒绝 `@argfile`；提交 `9e00873 fix: 收紧配置文件与 pytest 参数边界`。原实现提交为 `ab88afa feat: 添加声明式安全配置`。
 - 最终验证：配置测试 `28 passed`、全量 `93 passed`、Ruff 和累计 `git diff --check` 通过；scoped re-review 判定三项全部 ADDRESSED，0 新 Critical / Important / Minor。
 - 安全与边界：只修改 Task 3 两个白名单文件；错误不含配置值、路径或底层解析文本；没有 shell、CLI 终端依赖或秘密字段进入配置。
 - 分支已推送；PR：[PR #3](https://github.com/01w-01/SE-agent/pull/3)。
@@ -217,9 +217,9 @@
 ### 2026-08-09 · P-023 · 正式 Task 4 Windows 凭据生命周期
 
 - Superpowers 技能：`using-git-worktrees`、`subagent-driven-development`、`test-driven-development`、`receiving-code-review`、`requesting-code-review`、`verification-before-completion`。
-- worktree：`D:\Codes\FBW-worktrees\task-04`；分支 `task/04-credentials`，基线 `db1b958`，基线测试 `93 passed`。
-- 实现：Fake keyring TDD 覆盖 set/get/status/clear、空白 Key、默认 service/account、后端错误脱敏和 manual marker 隔离；提交 `4e7fdc0 feat: 添加安全凭据存储`。
-- review：发现异常 `__context__` 仍可泄漏 Key（Critical）和所有 `PasswordDeleteError` 被误当不存在（Important）。fix round 1 先用递归异常图与删除权限失败测试观察 RED，再在 except 块外映射固定错误、删除失败后重新确认凭据状态；提交 `1ec3d3f fix: 消除凭据异常链泄漏`。
+- worktree：`D:\Codes\FBW-worktrees\task-04`；分支 `task/04-credentials`，基线 `452ebf4`，基线测试 `93 passed`。
+- 实现：Fake keyring TDD 覆盖 set/get/status/clear、空白 Key、默认 service/account、后端错误脱敏和 manual marker 隔离；提交 `460ef89 feat: 添加安全凭据存储`。
+- review：发现异常 `__context__` 仍可泄漏 Key（Critical）和所有 `PasswordDeleteError` 被误当不存在（Important）。fix round 1 先用递归异常图与删除权限失败测试观察 RED，再在 except 块外映射固定错误、删除失败后重新确认凭据状态；提交 `b750d44 fix: 消除凭据异常链泄漏`。
 - 最终验证：凭据 `9 passed`、全量 `102 passed`、Ruff 和累计 diff check 通过；scoped re-review 两项全部 ADDRESSED，无新 Critical / Important。
 - deferred Minor：`status()` 后端失败没有独立直接测试；其实现当前复用 `get()`，留待最终整分支审查统一裁决。
 - 安全边界：自动测试仅使用 Fake backend，未访问真实 Credential Manager；异常图、消息和 traceback 均不保留 Key 或 backend 原文。
@@ -228,11 +228,11 @@
 ### 2026-08-09 · P-024 · 正式 Task 5 路径式工作区围栏
 
 - Superpowers 技能：`using-git-worktrees`、`subagent-driven-development`、`test-driven-development`、`receiving-code-review`、`writing-plans`、`requesting-code-review`、`verification-before-completion`。
-- worktree：`D:\Codes\FBW-worktrees\task-05`；分支 `task/05-workspace-fence`，基线 `a71fa61`，基线测试 `102 passed`。
-- 首版：实现路径规范化、commonpath、重解析点、保护段、有界 UTF-8 读取和 SHA-256，提交 `d69365d feat: 添加工作区安全围栏`；定向 `24 passed`、全量 `126 passed`。
+- worktree：`D:\Codes\FBW-worktrees\task-05`；分支 `task/05-workspace-fence`，基线 `05f2516`，基线测试 `102 passed`。
+- 首版：实现路径规范化、commonpath、重解析点、保护段、有界 UTF-8 读取和 SHA-256，提交 `40ca5f7 feat: 添加工作区安全围栏`；定向 `24 passed`、全量 `126 passed`。
 - review：有效审查报告指出路径式 stat/open 与 scandir 的残余竞态、检查顺序/root 链、保护范围和发现上限问题；首次 reviewer 请求被平台误判后以本地文件 API 正确性描述重试，没有修改代码。
 - 用户裁决：在 PLAN 与 Windows 原生句柄级建议冲突时选择 B，保留路径式围栏；SPEC 新增 R-09，明确不把应用层围栏描述为抵御同用户恶意并发替换的操作系统沙箱。
-- fix round 1：按 TDD 增加完整链检查、scandir 前复查、保护集合、1,000 返回/10,000 扫描上限、path/opened/post 状态比较和异常链脱敏；提交 `830a2a7 fix: 补强路径式工作区围栏`。
+- fix round 1：按 TDD 增加完整链检查、scandir 前复查、保护集合、1,000 返回/10,000 扫描上限、path/opened/post 状态比较和异常链脱敏；提交 `3e55761 fix: 补强路径式工作区围栏`。
 - 最终验证：工作区 `62 passed`、全量 `164 passed`、Ruff、format、累计 diff check 通过；scoped re-review 全部 ADDRESSED，无新 Critical / Important。
 - 安全边界：不引入原生句柄遍历或新依赖；残余 TOCTOU 是已知限制，不作为已解决风险宣传。
 - 分支已推送；PR：[PR #5](https://github.com/01w-01/SE-agent/pull/5)。
@@ -240,11 +240,11 @@
 ### 2026-08-10 · P-025 · 正式 Task 6 路径式文件事务与回滚
 
 - Superpowers 技能：`using-git-worktrees`、`subagent-driven-development`、`test-driven-development`、`receiving-code-review`、`requesting-code-review`、`verification-before-completion`。
-- worktree：`D:\Codes\FBW-worktrees\task-06`；分支 `task/06-transactions`，基线 `e161def`，基线测试 `164 passed`。
-- 首版：实现首次快照、同目录临时文件、flush/fsync/replace、并发哈希、commit 与逆序/部分回滚；提交 `c67d2ac feat: 添加文件事务与回滚`。
+- worktree：`D:\Codes\FBW-worktrees\task-06`；分支 `task/06-transactions`，基线 `f524122`，基线测试 `164 passed`。
+- 首版：实现首次快照、同目录临时文件、flush/fsync/replace、并发哈希、commit 与逆序/部分回滚；提交 `ecc2d79 feat: 添加文件事务与回滚`。
 - controller review：复现最终校验到 replace/unlink 的跨进程竞态（与路径式 PLAN 冲突），并发现恢复材料未验 hash、commit 部分清理后仍可写、目录 fsync 和运行期 reparse/身份复验缺口。
 - 用户裁决：选择 B，不实现平台 CAS/句柄事务；SPEC 新增 R-10，明确保留极窄跨进程 TOCTOU，不将其描述为已解决。
-- fix round 1：TDD 补恢复材料/结果双重 hash、commit-started 终态、平台目录 fsync、恢复目录链/身份复验和 dangling symlink 目录项检查；提交 `b4d7c1a fix: 补强路径式文件事务`。
+- fix round 1：TDD 补恢复材料/结果双重 hash、commit-started 终态、平台目录 fsync、恢复目录链/身份复验和 dangling symlink 目录项检查；提交 `398e589 fix: 补强路径式文件事务`。
 - 最终验证：事务 `49 passed`、全量 `213 passed`、Ruff、定向 format、累计 diff check 通过；controller scoped re-review 为 ALL_ADDRESSED。
 - 安全边界：只操作注入的 Workspace 与显式 recovery_root；不实现或宣称操作系统级跨进程条件更新。
 - 分支已推送；PR：[PR #6](https://github.com/01w-01/SE-agent/pull/6)。
@@ -252,9 +252,9 @@
 ### 2026-08-10 · P-026 · 正式 Task 7 治理、风险分级和 HITL
 
 - Superpowers 技能：`using-git-worktrees`、`subagent-driven-development`、`test-driven-development`、`receiving-code-review`、`requesting-code-review`、`verification-before-completion`。
-- worktree：`D:\Codes\FBW-worktrees\task-07`；分支 `task/07-policy-hitl`，基线 `41d5095`，基线测试 `213 passed`。
-- 实现：稳定 DENY/CONFIRM/ALLOW 规则、风险事实和 ApprovalProvider 边界；提交 `fc9e8d7 feat: 添加治理与人工审批`。
-- review：发现无 Workspace 时 Windows 路径 fail-open、脏路径大小写、manifest/build 覆盖、capability 泄漏和风险事实丢失；fix round 1 通过 18 个预期 RED 后修复，提交 `309cc15 fix: 收紧治理规则边界`。
+- worktree：`D:\Codes\FBW-worktrees\task-07`；分支 `task/07-policy-hitl`，基线 `1022bd1`，基线测试 `213 passed`。
+- 实现：稳定 DENY/CONFIRM/ALLOW 规则、风险事实和 ApprovalProvider 边界；提交 `9a26331 feat: 添加治理与人工审批`。
+- review：发现无 Workspace 时 Windows 路径 fail-open、脏路径大小写、manifest/build 覆盖、capability 泄漏和风险事实丢失；fix round 1 通过 18 个预期 RED 后修复，提交 `aa38758 fix: 收紧治理规则边界`。
 - 最终验证：策略 `51 passed`、全量 `264 passed`、Ruff、format、累计 diff check 通过；scoped re-review ALL_ADDRESSED。
 - 依赖记录：Task 7 不存在真实 ToolDispatcher；DENY 不触达真实工具层的集成证明已写入 SDD ledger，必须由 Task 11 完成。
 - 分支已推送；PR：[PR #7](https://github.com/01w-01/SE-agent/pull/7)。
@@ -262,11 +262,11 @@
 ### 2026-08-10 · P-027 · 正式 Task 8 pytest 与结构化反馈闭环
 
 - Superpowers 技能：`using-git-worktrees`、`subagent-driven-development`、`test-driven-development`、`receiving-code-review`、`requesting-code-review`、`systematic-debugging`、`verification-before-completion`。
-- worktree：`D:\Codes\FBW-worktrees\task-08`；分支 `task/08-pytest-feedback`，基线 `920e9d9`，基线测试 `264 passed`。
-- 首版：固定 `sys.executable -m pytest`、cwd/shell 边界、Windows 进程树终止、分类/摘要/指纹与脱敏，提交 `45800ad feat: 添加测试反馈闭环基础`。
-- 五轮 review fix：依次补 node-id/赋值/异常/有界双流/taskkill、早期诊断、先脱敏后截断、Authorization/quoted mapping/required secrets、映射 quote 与深度上限；追加 `842ee04`、`9b47845`、`97a42f9`、`4788d56`、`b4e4d65`。达到 5/5 后 reviewer 仍复现 quoted 内容绕过，按 SDD 上限停止叠补丁并升级架构修订。
-- 架构修订：删除旧混合状态机，拆成 `mapping -> global -> sk-token -> known-secret` 两层流式脱敏；RED `45 failed / 5 passed`，提交 `f60bb4c fix: 重构测试输出流式脱敏`。
-- 架构 fix round 1：补 standalone quoted field fragment，并把 known secrets 明确收窄为非空 ASCII tuple、三入口固定验证；追加 `247135a fix: 收紧测试反馈秘密契约`。
+- worktree：`D:\Codes\FBW-worktrees\task-08`；分支 `task/08-pytest-feedback`，基线 `af0e5f5`，基线测试 `264 passed`。
+- 首版：固定 `sys.executable -m pytest`、cwd/shell 边界、Windows 进程树终止、分类/摘要/指纹与脱敏，提交 `90448d7 feat: 添加测试反馈闭环基础`。
+- 五轮 review fix：依次补 node-id/赋值/异常/有界双流/taskkill、早期诊断、先脱敏后截断、Authorization/quoted mapping/required secrets、映射 quote 与深度上限；追加 `bdfe5ca`、`a68b953`、`f4928c6`、`19c2620`、`ad0d26e`。达到 5/5 后 reviewer 仍复现 quoted 内容绕过，按 SDD 上限停止叠补丁并升级架构修订。
+- 架构修订：删除旧混合状态机，拆成 `mapping -> global -> sk-token -> known-secret` 两层流式脱敏；RED `45 failed / 5 passed`，提交 `03d7519 fix: 重构测试输出流式脱敏`。
+- 架构 fix round 1：补 standalone quoted field fragment，并把 known secrets 明确收窄为非空 ASCII tuple、三入口固定验证；追加 `efa9b9c fix: 收紧测试反馈秘密契约`。
 - 最终 review：116 类 quoted fragment 与 3,504 个 chunk 组合、mapping fuzz、known secret overlap/adjacent、63/64/65/10,000 深度均通过；Critical 0 / Important 0 / Minor 0，结论 APPROVED。
 - 最终验证：Task 8 `234 passed, 1 skipped`、全量 `498 passed, 1 skipped`、Ruff、format、当前树秘密扫描和累计 diff check 全部通过；唯一 skip 为 Windows 不适用的 POSIX killpg 分支。
 - 安全边界：输出在进入有界 tail 前脱敏；mapping 栈最多 64；TestRunner 的 `known_secrets` 是 required keyword-only，Task 11 必须把同一 tuple 同时传给 TestRunner 与 FeedbackEngine，并补集成测试。
@@ -275,11 +275,11 @@
 ### 2026-08-10 · P-028 · 正式 Task 9 LLM 决策、解析与上下文
 
 - Superpowers 技能：`using-git-worktrees`、`subagent-driven-development`、`test-driven-development`、`systematic-debugging`、`receiving-code-review`、`requesting-code-review`、`verification-before-completion`。
-- worktree：`D:\Codes\FBW-worktrees\task-09`；分支 `task/09-llm-context`，基线 `d54ed9e`，基线测试 `498 passed, 1 skipped`。
-- 首版：实现严格 ActionParser、每次新建的固定工具 schema、OpenAI compatible 单次决策/瞬时重试、ScriptedMockLLM 深拷贝记录和预算 ContextBuilder；提交 `419c762 feat: 添加 LLM 决策与上下文构建`。
-- review fix round 1：修复测试秘密字面量、惰性 status/call/context 属性固定映射、Context 先限界再脱敏、100/100/100 数量和 path/hash 上限、最旧项完整淘汰与 schema 防污染；提交 `5d513d0 fix: 加固 LLM 与上下文边界`。
-- review fix round 2：为 SDK 与 custom/mock 决策统一增加 16 calls、64 name、4 MiB arguments、16,000 content 硬上限；提交 `53f29a8 fix: 限制 LLM 决策输出规模`。
-- review fix round 3：拒绝伪装 `__len__` 的 list/tuple/str 子类，在 len/iter/index/slice/encode 前 exact type fail-closed；提交 `80ca933 fix: 拒绝伪装的 LLM 响应类型`。
+- worktree：`D:\Codes\FBW-worktrees\task-09`；分支 `task/09-llm-context`，基线 `d563e4c`，基线测试 `498 passed, 1 skipped`。
+- 首版：实现严格 ActionParser、每次新建的固定工具 schema、OpenAI compatible 单次决策/瞬时重试、ScriptedMockLLM 深拷贝记录和预算 ContextBuilder；提交 `5d64989 feat: 添加 LLM 决策与上下文构建`。
+- review fix round 1：修复测试秘密字面量、惰性 status/call/context 属性固定映射、Context 先限界再脱敏、100/100/100 数量和 path/hash 上限、最旧项完整淘汰与 schema 防污染；提交 `58a06c2 fix: 加固 LLM 与上下文边界`。
+- review fix round 2：为 SDK 与 custom/mock 决策统一增加 16 calls、64 name、4 MiB arguments、16,000 content 硬上限；提交 `84f6926 fix: 限制 LLM 决策输出规模`。
+- review fix round 3：拒绝伪装 `__len__` 的 list/tuple/str 子类，在 len/iter/index/slice/encode 前 exact type fail-closed；提交 `49ad984 fix: 拒绝伪装的 LLM 响应类型`。
 - 最终 review：普通 SDK list/tuple、伪装容器/字符串、lazy function/name、16/17 calls、64/65 name、4 MiB/+1 arguments 和 content 截断均通过；Critical 0 / Important 0，ALL_ADDRESSED。
 - 最终验证：Task 9 `113 passed`、全量 `611 passed, 1 skipped`、Ruff、format、当前树秘密扫描和累计 diff check 全部通过；唯一 skip 延续为 Windows 不适用的 POSIX killpg 分支。
 - 分支已推送；PR：[PR #9](https://github.com/01w-01/SE-agent/pull/9)。
@@ -288,11 +288,11 @@
 
 - 用户授权：知晓现有 Git 历史包含临时 API Key，仍明确授权推送到指定 GitHub 仓库并继续 PR；不改写历史，课程凭据冲突仍保留。
 - Superpowers 技能：`using-git-worktrees`、`subagent-driven-development`、`test-driven-development`、`systematic-debugging`、`receiving-code-review`、`requesting-code-review`、`verification-before-completion`。
-- worktree：`D:\Codes\FBW-worktrees\task-10`；分支 `task/10-project-memory`，基线 `0058ca8`，基线测试 `611 passed, 1 skipped`。
-- 首版：默认关闭的 `JsonProjectMemoryStore`、四字段 schema、2,000 字符上限、损坏隔离、同目录原子写与 clear，提交 `c1befd5 feat: 添加受控项目记忆`。
-- task review fix round 1：按既有路径式方案 B 补静态目标/父目录 symlink 与 Windows junction、固定损坏提示、严格 UTC；提交 `de99cac fix: 加固项目记忆边界`。同用户恶意并发替换作为 SPEC R-11 残余风险，不升级为句柄引擎。
-- task review fix round 2：保证 `RuntimeWarning` 被配置为 error 时仍返回无记忆运行；提交 `44c8f12 fix: 防止项目记忆警告阻断回退`。
-- 最终累计 review fix：修复 quoted JSON/TOML/env 秘密字段绕过、超限/不可读/隔离失败状态误覆盖和 NUL 路径异常；提交 `5eeb08a fix: 收紧项目记忆安全边界`。
+- worktree：`D:\Codes\FBW-worktrees\task-10`；分支 `task/10-project-memory`，基线 `b1d4987`，基线测试 `611 passed, 1 skipped`。
+- 首版：默认关闭的 `JsonProjectMemoryStore`、四字段 schema、2,000 字符上限、损坏隔离、同目录原子写与 clear，提交 `d142dda feat: 添加受控项目记忆`。
+- task review fix round 1：按既有路径式方案 B 补静态目标/父目录 symlink 与 Windows junction、固定损坏提示、严格 UTC；提交 `230a704 fix: 加固项目记忆边界`。同用户恶意并发替换作为 SPEC R-11 残余风险，不升级为句柄引擎。
+- task review fix round 2：保证 `RuntimeWarning` 被配置为 error 时仍返回无记忆运行；提交 `854bd80 fix: 防止项目记忆警告阻断回退`。
+- 最终累计 review fix：修复 quoted JSON/TOML/env 秘密字段绕过、超限/不可读/隔离失败状态误覆盖和 NUL 路径异常；提交 `60dec5b fix: 收紧项目记忆安全边界`。
 - 最终 review：三项累计 finding 全部 ADDRESSED，无新 Critical / Important；结论 Ready to merge。
 - 控制器最终验证：Task 10 `32 passed`、全量 `643 passed, 1 skipped`、Ruff、format、当前树秘密扫描和累计 diff check 全部通过；唯一 skip 延续为 Windows 不适用的 POSIX killpg 分支。
 - Task 11 继承：仅成功 RunResult 调用 `save_success()`；仅 enabled 且 `load()` 成功才注入 ContextBuilder；路径式 R-11 与固定安全提示必须保持。
@@ -301,10 +301,10 @@
 ### 2026-08-11 · P-030 · 正式 Task 11 Agent 主循环与威胁边界裁决
 
 - Superpowers 技能：`subagent-driven-development`、`test-driven-development`、`receiving-code-review`、`requesting-code-review`、`verification-before-completion`、`finishing-a-development-branch`。
-- worktree：`D:\Codes\FBW-worktrees\task-11`；分支 `task/11-agent-loop`，基线 `5f8799a`。
-- 实现提交：`e102edc feat: 实现 Agent 主循环`、`de4c48e fix: 修正 Agent 循环审查问题`、`c654dc6 fix: 收紧 Agent 循环安全边界`；覆盖 ToolDispatcher、显式状态机、真实 pytest 反馈闭环、治理/HITL、事务终态、ApplicationService、记忆与凭据注入。
+- worktree：`D:\Codes\FBW-worktrees\task-11`；分支 `task/11-agent-loop`，基线 `6d14a3e`。
+- 实现提交：`44c20d5 feat: 实现 Agent 主循环`、`e756d74 fix: 修正 Agent 循环审查问题`、`b9ff945 fix: 收紧 Agent 循环安全边界`；覆盖 ToolDispatcher、显式状态机、真实 pytest 反馈闭环、治理/HITL、事务终态、ApplicationService、记忆与凭据注入。
 - 用户裁决：有限 `_CAPABILITY_TOKENS` 只作常见模式的 best-effort `CONFIRM` 提示；它不是安全边界，不要求覆盖未列 API、字符串拼接或纯内置函数，也不继续扩表或重构。安全边界固定为工作区路径围栏、动作级策略/HITL、逐文件事务与回滚；工作区 pytest 代码执行列为 SPEC R-12 已知限制。
-- 小范围 TDD 收口：先以提交/完整回滚两个终态复现恢复目录 `rmdir()` 的 `KeyboardInterrupt` 逸出，再由清理边界吞掉 `BaseException`，确保磁盘终态已确定后仍返回原 `RunResult`；提交 `4cd4cb4 fix: 保证终态清理不改变运行结果`。
+- 小范围 TDD 收口：先以提交/完整回滚两个终态复现恢复目录 `rmdir()` 的 `KeyboardInterrupt` 逸出，再由清理边界吞掉 `BaseException`，确保磁盘终态已确定后仍返回原 `RunResult`；提交 `de296d9 fix: 保证终态清理不改变运行结果`。
 - Task 12–14 reviewer 指令：按上述威胁模型审查；代码执行不在边界内，denylist 不要求完备；Critical 仅限数据丢失、回滚失败、凭据泄漏、越界写入，其余不阻断 PR；每个 task 最多一轮修复且不做第二轮复审。
 - 最终门禁：Task 11 相关定向 `227 passed`、全量 `729 passed, 1 skipped`、Ruff、8 文件 format、当前树秘密扫描和累计 diff check 全部通过。
 - 分支已推送；PR：[PR #11](https://github.com/01w-01/SE-agent/pull/11)。
@@ -312,37 +312,37 @@
 ### 2026-08-11 · P-031 · 正式 Task 12 CLI 与三项 Mock 机制演示
 
 - Superpowers 技能：`using-git-worktrees`、`subagent-driven-development`、`test-driven-development`、`requesting-code-review`、`receiving-code-review`、`verification-before-completion`。
-- worktree：`D:\Codes\FBW-worktrees\task-12`；分支 `task/12-cli-demos`，基线 `4447261`，基线全量 `729 passed, 1 skipped`。
-- 首版提交：`473b32a feat: 添加 CLI 与机制演示`；提供 `run`、`credential`、`memory clear`、`demo` 子命令、Console/JSONL 事件边界、隐藏凭据输入、临时目录机制演示和 PowerShell 一键脚本。
+- worktree：`D:\Codes\FBW-worktrees\task-12`；分支 `task/12-cli-demos`，基线 `5a62726`，基线全量 `729 passed, 1 skipped`。
+- 首版提交：`6f3d209 feat: 添加 CLI 与机制演示`；提供 `run`、`credential`、`memory clear`、`demo` 子命令、Console/JSONL 事件边界、隐藏凭据输入、临时目录机制演示和 PowerShell 一键脚本。
 - 唯一 task review：0 Critical；代码质量与安全 APPROVED；两项 Important/TODO 指出 guardrail 指标原为推算，以及组合根测试未观察真实 factory/loop 构造。两项均属于 brief 可观察行为，不涉及 SPEC R-12 的代码执行非目标。
-- 唯一 fix round 1/1：先复现 ALLOW 策略下 dispatcher 调用两次而旧 demo 仍 PASS，再让结果来自真实 PolicyDecision/RunEvent/dispatcher 记录；同时实际运行 CLI 与 demo 组合根，证明同一 ApplicationService/AgentLoop、不同真实/Mock factory；提交 `4ab5134 fix: 强化演示机制验证`。按用户裁决不做第二轮复审。
+- 唯一 fix round 1/1：先复现 ALLOW 策略下 dispatcher 调用两次而旧 demo 仍 PASS，再让结果来自真实 PolicyDecision/RunEvent/dispatcher 记录；同时实际运行 CLI 与 demo 组合根，证明同一 ApplicationService/AgentLoop、不同真实/Mock factory；提交 `ad324a5 fix: 强化演示机制验证`。按用户裁决不做第二轮复审。
 - 控制器最终门禁：Task 12 定向 `11 passed`、全量 `743 passed, 1 skipped`；CLI help、`demo all`、`scripts/demo.ps1`、Ruff、本任务 format、正式当前树秘密扫描和累计 diff check 全部通过。
 - 已知非阻断状态：全树 format 仍有 Task 12 白名单外的既有漂移，未跨任务修改；唯一 pytest skip 仍为 Windows 不适用的 POSIX killpg 分支。
 - 分支已推送；PR：[PR #12](https://github.com/01w-01/SE-agent/pull/12)。
-- 合并后 Windows 主 worktree 复验稳定失败：CRLF fixture 被 `read_text()` 规范化为 LF，expected SHA 与 FileTransaction 的磁盘字节哈希不一致。经 systematic-debugging 追踪到两个 `EditConflictError`，以显式 CRLF TDD 回归最小修复；提交 `e9b1cd9 fix: 保留演示 fixture 的 CRLF 换行`，控制器复验机制 `7 passed`、全量 `744 passed, 1 skipped` 及静态门禁通过。该集成 hotfix 不属于第二轮 reviewer/fix loop；补充 PR：[PR #13](https://github.com/01w-01/SE-agent/pull/13)。
+- 合并后 Windows 主 worktree 复验稳定失败：CRLF fixture 被 `read_text()` 规范化为 LF，expected SHA 与 FileTransaction 的磁盘字节哈希不一致。经 systematic-debugging 追踪到两个 `EditConflictError`，以显式 CRLF TDD 回归最小修复；提交 `f5718ba fix: 保留演示 fixture 的 CRLF 换行`，控制器复验机制 `7 passed`、全量 `744 passed, 1 skipped` 及静态门禁通过。该集成 hotfix 不属于第二轮 reviewer/fix loop；补充 PR：[PR #13](https://github.com/01w-01/SE-agent/pull/13)。
 
 ### 2026-08-11 · P-032 · 正式 Task 13 README、CI 与 Windows 单文件分发
 
 - Superpowers 技能：`using-git-worktrees`、`subagent-driven-development`、`test-driven-development`、`systematic-debugging`、`requesting-code-review`、`receiving-code-review`、`verification-before-completion`。
-- worktree：`D:\Codes\FBW-worktrees\task-13`；分支 `task/13-distribution`，基线 `fdf0830`，基线全量 `744 passed, 1 skipped`。
-- 首版提交 `852db5e build: 添加 CI 与 Windows 分发`：根/包 README、GitLab unit-test、GitHub Windows/tag workflow、PyInstaller spec、staging build、当前/历史秘密扫描和分发合同测试。
+- worktree：`D:\Codes\FBW-worktrees\task-13`；分支 `task/13-distribution`，基线 `ab72c95`，基线全量 `744 passed, 1 skipped`。
+- 首版提交 `ba17f6b build: 添加 CI 与 Windows 分发`：根/包 README、GitLab unit-test、GitHub Windows/tag workflow、PyInstaller spec、staging build、当前/历史秘密扫描和分发合同测试。
 - 冻结边界实测：依次以真实 exe RED 定位包入口相对导入、fixture 未携带、冻结 `sys.executable -m pytest` 三个根因；在 spec/workpath 入口与数据/pytest 收集中最小修复，使单文件 `--help` 和 `demo all` 无需系统 Python、网络或 Key。
 - 唯一 task review：规格 PASS、质量/安全 APPROVED、0 Critical；报告 staging cleanup 失败后最终产物残留、合同测试偏弱和 README cwd 三项。
-- 唯一 fix round 1/1：受控复现 cleanup 非零但 exe 留存，统一失败清理最终 exe/SHA；补 spec、workflow、历史输出严格合同并修 README；提交 `84d4527 fix: 收紧分发构建清理门禁`，按用户裁决不做第二轮复审。
+- 唯一 fix round 1/1：受控复现 cleanup 非零但 exe 留存，统一失败清理最终 exe/SHA；补 spec、workflow、历史输出严格合同并修 README；提交 `c177db5 fix: 收紧分发构建清理门禁`，按用户裁决不做第二轮复审。
 - 控制器最终门禁：定向 `6 passed`、完整 build 内全量 `750 passed, 1 skipped`、Ruff、format、当前树扫描、exe help/demo、SHA 与累计 diff 全部通过。
 - 历史扫描按用户已接受的临时 Key 风险真实退出 `1`，只输出 SHA 与路径；tag/Release 继续被阻断，没有改写历史或弱化门禁。
 - 分支已推送；PR：[PR #14](https://github.com/01w-01/SE-agent/pull/14)。
 
 ### 2026-08-11 · P-033 · 正式 Task 14 最终验收与不可发布裁决
 
-- Superpowers 技能：`using-git-worktrees`（确认既有隔离工作树）、`executing-plans`、`requesting-code-review`、`verification-before-completion`；实现 agent 为 Codex Task 14 implementer，worktree `D:\Codes\FBW-worktrees\task-14`，分支 `task/14-final-evidence`，基线 `cd2b0ef`。
+- Superpowers 技能：`using-git-worktrees`（确认既有隔离工作树）、`executing-plans`、`requesting-code-review`、`verification-before-completion`；实现 agent 为 Codex Task 14 implementer，worktree `D:\Codes\FBW-worktrees\task-14`，分支 `task/14-final-evidence`，基线 `d2572cf`。
 - AI 执行证据：离线全量 `750 passed, 1 skipped`；Ruff、当前树扫描、三项 demo、完整 build 均退出 `0`；PyInstaller 6.22.0 / Python 3.13.13；当前开发机 exe `--help` 与 `demo all` 均退出 `0`，SHA-256 与校验文件一致，Authenticode 为 `NotSigned`。
 - 真实 API 人工/安全裁决：控制器允许使用用户先前提供的学校临时凭据，但本 agent 未获得人工隐藏输入；平台拒绝自动从 Git 历史提取并联网，命令未执行。遵循裁决不再读取、设置或联网，真实 API Step 2 保持 blocked；CredentialStore 最终 `configured=False`，临时 Python 项目已删除，没有凭据、请求、RunResult 或响应正文残留。
 - 控制器完成提交后新鲜复验：全量 `750 passed, 1 skipped`、Ruff、三项 demo、当前树扫描和 task diff check 通过；重新构建后 exe `--help`、`demo all`、SHA 校验通过，最新本机构建 SHA 已回写验收清单。全树 format-check 仍报告 4 个 Task 14 范围外既有文件会被重排，因此不在本 task 越界修改。
 - 外部门禁：本机是已有 Python/uv 的 Windows 11 开发机，不是干净新机；只有 GitHub `origin`，没有 GitLab remote/pipeline URL；没有课程方 WebUI 书面豁免。三项均不得以本地结果替代。
-- 历史门禁：`scripts/scan-history.ps1` 按预期退出 `1`，仅输出 commit/path 元数据（34 行、18 个 commit、4 个路径，包含 `77da924`），没有回显匹配内容；未改写历史。当前树扫描退出 `0`。
+- 历史门禁：`scripts/scan-history.ps1` 按预期退出 `1`，仅输出 commit/path 元数据（34 行、18 个 commit、4 个路径，包含 `938b1b8`），没有回显匹配内容；未改写历史。当前树扫描退出 `0`。
 - 发布裁决：真实 API、干净新机、GitLab CI、历史零凭据与 WebUI 门禁未满足，项目当前不可发布；没有创建 tag、Release 或 `REFLECTION.md`。完整证据见 `docs/evidence/release-checklist.md` 与 `docs/evidence/ci-last-pass.md`。
-- 唯一只读 task review 检查 `cd2b0ef..8e8f14c`：SPEC/PLAN、白名单、证据真实性、凭据卫生和发布裁决均通过，0 Critical、0 Important、0 Minor，文档 `Ready to merge: Yes`；reviewer 同时确认产品仍为 `NOT RELEASABLE`。无修复项，不进行第二次 re-review。
+- 唯一只读 task review 检查 `d2572cf..cca776f`：SPEC/PLAN、白名单、证据真实性、凭据卫生和发布裁决均通过，0 Critical、0 Important、0 Minor，文档 `Ready to merge: Yes`；reviewer 同时确认产品仍为 `NOT RELEASABLE`。无修复项，不进行第二次 re-review。
 - 分支已推送；最终证据 PR：[PR #15](https://github.com/01w-01/SE-agent/pull/15)。该 PR 只集成验收与阻塞证据，不创建 tag 或 Release。
 
 ### 2026-08-12 · P-034 · GitHub Actions feedback 间歇失败 hotfix
@@ -350,7 +350,7 @@
 - Superpowers 技能：`systematic-debugging`、`brainstorming`、`writing-plans`、`test-driven-development`、`executing-plans`、`verification-before-completion`、`using-git-worktrees`。
 - CI 证据：PR #14 branch push run `31503814219` 与 PR #15 早期 run `31507839696` 均在 feedback demo 失败；同提交 PR/main 检查通过。PR #15 run `31507916781` 首次失败后原样重跑成功，说明当前 main 绿色但存在时序相关波动。
 - 根因：错误版与修正版 Python 文件大小相同且快速连续改写；时间戳型 `.pyc` 可能仍被判定有效，第二次 pytest 复用错误字节码，修正测试继续失败，Mock LLM 在第 4 次请求时耗尽并归一为 `api_failure`。
-- Brainstorming 选择方案 A：每次 TestRunner 使用独立 OS 临时 `PYTHONPYCACHEPREFIX`；不采用仅禁写字节码或删除工作区 `__pycache__`。设计提交 `01ddb0b`，实施计划提交 `e065451`。
+- Brainstorming 选择方案 A：每次 TestRunner 使用独立 OS 临时 `PYTHONPYCACHEPREFIX`；不采用仅禁写字节码或删除工作区 `__pycache__`。设计提交 `ab0bb43`，实施计划提交 `7206589`。
 - TDD：真实 TestRunner 回归固定源码 mtime 并进行等长 `wrong`→`right` 改写；旧实现稳定 RED（第二次仍失败），最小隔离实现后 GREEN，且工作区无 `__pycache__`。
 - 验证：TestRunner/feedback `235 passed, 1 skipped`；feedback demo 连续 10 轮、20 项全部通过；全量 `751 passed, 1 skipped in 198.98s`；Ruff、两个改动文件 format、三项 demo、当前树扫描及 diff check 全部通过。
 - 权衡：独立空缓存使全量耗时增加，单次 feedback 约 14–16 秒，仍低于固定 60 秒 pytest 超时；未扩大安全边界或修改用户项目缓存。
@@ -359,18 +359,18 @@
 ### 2026-08-12 · P-035 · NJU GitLab 提交与 CI 证据
 
 - 用户提供空 NJU Git 仓库并授权生成专用 Ed25519 密钥；公钥登记后只读 SSH 验证通过。私钥不进入仓库、日志或输出。
-- 用户明确知晓完整历史含临时 API Key，并授权推送至 NJU Git；`main@762b738` 已推送，且本地 HEAD 与 `nju/main` 核对一致。
+- 用户明确知晓完整历史含临时 API Key，并授权推送至 NJU Git；`main@17554b3` 已推送，且本地 HEAD 与 `nju/main` 核对一致。
 - `.gitlab-ci.yml` 的 `unit-test` 执行当前树扫描、Ruff 与全量 pytest。用户登录后确认 [Pipeline #320523](https://git.nju.edu.cn/wyl510/se-agent/-/pipelines/320523) 为绿色 passed；匿名 API 因反机器人页面无法自动读取。
 - GitLab CI 门禁由 BLOCKED 转为 PASS；真实 API、干净 Windows、历史凭据和 WebUI 有意偏离仍阻断公开 Release。
 
 ### 2026-08-12 · P-036 · 学校真实 API 兼容与受控修复
 
-- Superpowers 技能：`brainstorming`、`systematic-debugging`、`writing-plans`、`using-git-worktrees`、`executing-plans`、`test-driven-development`、`verification-before-completion`；worktree `D:\Codes\FBW-worktrees\tool-choice-fallback`，分支 `fix/openai-tool-choice-fallback`，基线 `3f77dc4`。
+- Superpowers 技能：`brainstorming`、`systematic-debugging`、`writing-plans`、`using-git-worktrees`、`executing-plans`、`test-driven-development`、`verification-before-completion`；worktree `D:\Codes\FBW-worktrees\tool-choice-fallback`，分支 `fix/openai-tool-choice-fallback`，基线 `c51e035`。
 - 人工授权与诊断：用户通过隐藏输入配置 CredentialStore，并批准 HTTP 400 兼容方案。普通 chat 与 tools-only 请求成功，而 `tools + tool_choice="required"` 固定返回 400；诊断不输出 Key、响应正文或异常文本。
 - TDD：新增测试在旧实现上 `4 failed`，证明 required 400 不降级、无实例记忆且第二请求未发生；最小实现后选择测试 `4 passed`，完整 LLM/context/parser 为 `124 passed`。默认仍 required；仅精确 400 时当前 client 同轮重发 tools-only 并记忆，新 client 恢复严格模式；其余状态和固定错误边界不变。
 - 真实闭环：一次性 clamp 项目基线 `2 failed, 1 passed`；修复后 `deepseek-v4-flash` 在 2 轮内返回 `COMPLETED`，仅修改 `clamp.py`，独立 pytest `3 passed`，回滚状态完整。
 - 清理与发布裁决：`credential clear` 后状态为 `configured=False`；一次性 `fbw-real-api-*` 目录经系统临时根、直接子目录和固定前缀三重核对后删除。真实 API 门禁转为 PASS；干净 Windows、历史零凭据和 WebUI 有意偏离仍阻断 tag/Release。
-- 独立审查：实现与测试 0 Critical、0 Important；证据清单最初沿用旧日期/基线却写入新 API PASS，被判 1 项 Important。修正为“原始构建/发行物基线 + 2026-08-12 增量代码/API 基线”，并明确哪些门禁在 `b8e4bc9` 重新执行，避免把旧 exe 证据冒充为新构建。
+- 独立审查：实现与测试 0 Critical、0 Important；证据清单最初沿用旧日期/基线却写入新 API PASS，被判 1 项 Important。修正为“原始构建/发行物基线 + 2026-08-12 增量代码/API 基线”，并明确哪些门禁在 `bd67e11` 重新执行，避免把旧 exe 证据冒充为新构建。
 
 ## 3. 当前关键决定
 
@@ -387,7 +387,7 @@
 | Credential Manager 存储 Key | AI 依据课程要求推荐 | 待用户随 SPEC 审阅 |
 | 现有历史留在 `main`；编码阶段 branch + worktree + PR | 用户决定 | 此前流程偏离已解决 |
 | 首版不实现 WebUI，但保留入口扩展边界 | 用户决定 | 仍与课程最终清单冲突 |
-| 不自行重写含 Key 的 Git 历史 | 用户接受当前风险 | 仅在公开发布/正式提交时阻断 |
+| 精确重写含 Key 的 Git 历史 | 用户于发布收口阶段明确授权 | 规范 GitHub/NJU refs 已清理并通过扫描 |
 
 ## 4. Superpowers 技能使用状态
 
@@ -411,11 +411,11 @@
 - 当前决定：首版纯 CLI；CLIAdapter 与核心解耦，未来可增加 WebUIAdapter。
 - 处理：不创建无行为占位代码；如实记录“可扩展”仍不等于已交付 WebUI，后续需用户或课程方作最终裁决。
 
-### D-02 · 凭据已进入历史
+### D-02 · 凭据历史冲突（已解决）
 
 - 课程要求：源码、日志、配置和 Git 历史均不得含 Key。
-- 当前事实：`77da924` 已包含学校临时 Key。
-- 处理：用户接受当前私有开发风险，不在新文档重复 Key，也不重写现有历史；公开发布/正式提交时凭据扫描仍会失败，届时如实报告而不绕过门禁。
+- 历史事实：早期提交曾包含学校临时 Key。
+- 处理：用户于 2026-08-12 明确授权精确重写本人独占仓库；规范 GitHub/NJU `main` 与 fresh clone 历史扫描均通过。平台 cached views/internal PR refs 需 GitHub Support 才能永久清除，不回显 Key。
 
 ### D-03 · 分支、worktree 与 PR
 
@@ -433,9 +433,22 @@
 
 | Commit | 内容 | 过程含义 |
 |---|---|---|
-| `77da924 init` | 初始文件与旧原型 | 建立基线，同时引入凭据历史冲突 |
-| `b773647 docs: 添加 Coding Agent Harness demo 设计` | brainstorming 设计依据 | 不是正式 SPEC |
-| `b5f3d72 docs: 补齐正式课程规约与过程记录` | 正式 SPEC 与过程记录初版 | 进入用户书面审阅门禁 |
-| `2286e3c docs: 修订 CLI 扩展边界与开发流程` | 第一轮 SPEC 审阅修订 | 进入最终批准门禁 |
+| `938b1b8 init` | 初始文件与旧原型 | 建立基线，同时引入凭据历史冲突 |
+| `521e990 docs: 添加 Coding Agent Harness demo 设计` | brainstorming 设计依据 | 不是正式 SPEC |
+| `c9b176e docs: 补齐正式课程规约与过程记录` | 正式 SPEC 与过程记录初版 | 进入用户书面审阅门禁 |
+| `9cd4865 docs: 修订 CLI 扩展边界与开发流程` | 第一轮 SPEC 审阅修订 | 进入最终批准门禁 |
 
 后续正式文档提交完成后，应在本表新增其 commit；实现阶段每个 PLAN task 还需记录 task、技能、subagent、人工修改和验证证据。
+
+## 7. Git 历史敏感模式清理（2026-08-12）
+
+- 用户确认仓库只有本人使用，并明确批准精确历史重写；
+- 使用技能：`brainstorming`、`writing-plans`、`executing-plans`、`using-git-worktrees`、`systematic-debugging`、`verification-before-completion`、`requesting-code-review`、`finishing-a-development-branch`；
+- PR #18 固化历史清理设计/计划；PR #19 仅把 2 MB 高输出压力测试的测试超时从 10 秒调整为 30 秒，产品逻辑未改；
+- 在系统临时目录创建完整 bundle 和单分支 bare mirror，以 `git-filter-repo 2.47.0 --sensitive-data-removal --no-fetch` 重写 120 个提交；
+- filter-repo 前后 head tree 相同，commit map 全覆盖且无零/重复映射；
+- 增加 `9cd6cb5 test: 更新历史扫描清理合同`，把旧的预期失败合同翻转为清理后必须 exit 0 且无输出；
+- GitHub/NJU `main` 均通过明确旧 SHA 的 `force-with-lease` 更新；GitHub 遗留分支通过分支旧 SHA 租约删除；
+- GitHub fresh clone：双扫描 PASS、`754 passed, 1 skipped`、Ruff PASS；NJU fresh clone：双扫描 PASS；根仓库切换后双扫描、`754 passed, 1 skipped`、Ruff PASS；
+- 本地旧 refs/reflog/对象已清除；临时 bundle/mirror 保留到证据 PR 合并与最终双端验证后再删除；
+- 不记录 Key、匹配文本、请求头或历史 blob 内容；GitHub cached views/internal PR refs 保持 Support 外部边界。

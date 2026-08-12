@@ -28,10 +28,10 @@
 - Create: `docs/superpowers/plans/2026-08-12-history-secret-cleanup.md`
 
 **Interfaces:**
-- Consumes: 当前 GitHub/NJU `main@4305dd6`、已批准设计。
+- Consumes: 当前 GitHub/NJU `main@3c86922`、已批准设计。
 - Produces: 两端 CI 绿色且只含文档变更的唯一清理基线 SHA，记为 `$cleanupBaseline`。
 
-- [ ] **Step 1: 自检设计与计划**
+- [x] **Step 1: 自检设计与计划**
 
 ```powershell
 rg -n 'T[B]D|T[O]DO|i[m]plement later|f[i]ll in details' docs/superpowers/specs/2026-08-12-history-secret-cleanup-design.md docs/superpowers/plans/2026-08-12-history-secret-cleanup.md
@@ -41,7 +41,7 @@ pwsh -NoProfile -File scripts/scan-current-tree.ps1
 
 Expected: placeholder 查询无命中；其余命令 exit 0。
 
-- [ ] **Step 2: 提交计划修订**
+- [x] **Step 2: 提交计划修订**
 
 ```powershell
 git add -- docs/superpowers/specs/2026-08-12-history-secret-cleanup-design.md docs/superpowers/plans/2026-08-12-history-secret-cleanup.md
@@ -49,19 +49,19 @@ git diff --cached --check
 git commit -m "docs: 规划 Git 历史敏感信息清理"
 ```
 
-- [ ] **Step 3: 推送并创建普通 PR**
+- [x] **Step 3: 推送并创建普通 PR**
 
 推送 `fix/history-secret-cleanup`，创建到 `main` 的 PR。PR 正文必须声明这是设计/计划，不执行历史重写，并附当前树扫描结果。
 
-- [ ] **Step 4: 等待 GitHub branch/pull_request CI 绿色后合并**
+- [x] **Step 4: 等待 GitHub branch/pull_request CI 绿色后合并**
 
 Expected: 两个 `unit-test` 绿色；非 tag 的 release 正确跳过。合并后快进本地 `main`，记下 `$cleanupBaseline = git rev-parse main`。
 
-- [ ] **Step 5: 同步 NJU 并确认最新 pipeline 绿色**
+- [x] **Step 5: 同步 NJU 并确认最新 pipeline 绿色**
 
 使用专用 NJU SSH 密钥普通推送 `main`，核对 `nju/main == $cleanupBaseline`；由用户登录确认最新 pipeline 绿色。
 
-- [ ] **Step 6: 清理设计 worktree 与功能分支**
+- [x] **Step 6: 清理设计 worktree 与功能分支**
 
 确认设计提交已是 `$cleanupBaseline` 祖先且 worktree 干净，然后删除 GitHub 远端功能分支、本地 worktree 和本地功能分支。Expected: `git worktree list` 只剩根工作区。
 
@@ -76,7 +76,7 @@ Expected: 两个 `unit-test` 绿色；非 tag 的 release 正确跳过。合并�
 - Consumes: `$cleanupBaseline`、GitHub/NJU main、GitHub 旧分支 `task/14-final-evidence`。
 - Produces: 已验证 bundle、只含 `refs/heads/main` 的 bare clone、原始 SHA/tree/commit-count 元数据。
 
-- [ ] **Step 1: 严格核对根工作区状态**
+- [x] **Step 1: 严格核对根工作区状态**
 
 ```powershell
 git status --porcelain
@@ -88,11 +88,11 @@ git tag --list
 
 Expected: 只有三份预期未跟踪进度文件；只有根 worktree；两个 main 均等于 `$cleanupBaseline`；旧 GitHub 分支 SHA 与调查记录一致；无 tag。
 
-- [ ] **Step 2: 创建唯一 OS 临时根并记录不变量**
+- [x] **Step 2: 创建唯一 OS 临时根并记录不变量**
 
 用 `[guid]::NewGuid().ToString('N')` 生成 `$guid`，创建名称精确为 `fbw-history-cleanup-$guid` 的 `$cleanupRoot`，验证其直接父目录是 `[IO.Path]::GetTempPath()`。记录 `$oldMain`、`$oldTree = git rev-parse "$oldMain^{tree}"`、`$oldCount = git rev-list --count $oldMain`、`$oldLegacyBranch`。
 
-- [ ] **Step 3: 创建和验证单分支 bundle**
+- [x] **Step 3: 创建和验证单分支 bundle**
 
 ```powershell
 git bundle create "$cleanupRoot/original-main.bundle" main
@@ -101,7 +101,7 @@ git bundle verify "$cleanupRoot/original-main.bundle"
 
 Expected: bundle verify exit 0，bundle 不进入仓库。
 
-- [ ] **Step 4: 创建只含 main 的 bare clone**
+- [x] **Step 4: 创建只含 main 的 bare clone**
 
 ```powershell
 git clone --bare --single-branch --branch main D:\Codes\FBW "$cleanupRoot/rewrite.git"
@@ -110,7 +110,7 @@ git -C "$cleanupRoot/rewrite.git" for-each-ref --format='%(refname) %(objectname
 
 Expected: 规范输入仅为 `refs/heads/main`，SHA 为 `$oldMain`；若出现其他 heads/tags，停止。
 
-- [ ] **Step 5: 创建无秘密的替换规则并验证工具版本**
+- [x] **Step 5: 创建无秘密的替换规则并验证工具版本**
 
 `replacements.txt` 只含：
 
@@ -131,7 +131,7 @@ regex:sk-[A-Za-z0-9]{12,}==>[REDACTED-HISTORICAL-TOKEN]
 - Consumes: bare clone、replacement file、原始不变量。
 - Produces: `$newMain`、commit map、本地全绿的新历史。
 
-- [ ] **Step 1: 执行敏感数据模式重写**
+- [x] **Step 1: 执行敏感数据模式重写**
 
 ```powershell
 Push-Location "$cleanupRoot/rewrite.git"
@@ -145,7 +145,7 @@ finally {
 
 `--no-fetch` 为强制要求：敏感数据模式默认会从 origin 镜像抓取全部 refs，而本设计只允许已经核对的 bare `main` 输入。Expected: exit 0；禁止移除 `--no-fetch`、更改替换规则或扩大 refs。
 
-- [ ] **Step 2: 验证历史结构与当前 tree 不变量**
+- [x] **Step 2: 验证历史结构与当前 tree 不变量**
 
 记录 `$newMain` 并断言：
 
@@ -157,7 +157,7 @@ git -C "$cleanupRoot/rewrite.git" log -1 --format='%s' refs/heads/main
 
 Expected: new tree 等于 `$oldTree`；commit count 等于 `$oldCount`；头提交信息与旧 main 相同；`$newMain != $oldMain`。
 
-- [ ] **Step 3: 在 bare clone 运行历史扫描**
+- [x] **Step 3: 在 bare clone 运行历史扫描**
 
 ```powershell
 pwsh -NoProfile -File D:\Codes\FBW\scripts\scan-history.ps1
@@ -165,7 +165,7 @@ pwsh -NoProfile -File D:\Codes\FBW\scripts\scan-history.ps1
 
 命令 cwd 固定为 `rewrite.git`。Expected: exit 0、无命中输出；exit 1 或 2 都停止。
 
-- [ ] **Step 4: 从新历史创建本地验证 clone**
+- [x] **Step 4: 从新历史创建本地验证 clone**
 
 ```powershell
 git clone --single-branch --branch main "$cleanupRoot/rewrite.git" "$cleanupRoot/verify-local"
@@ -182,7 +182,7 @@ uv run --project mini-harness ruff check mini-harness
 
 Expected: 两个扫描 exit 0；pytest 0 failures；Ruff exit 0。
 
-- [ ] **Step 5: 验证 commit map 完整且不含秘密输出**
+- [x] **Step 5: 验证 commit map 完整且不含秘密输出**
 
 commit map 必须包含 `$oldMain -> $newMain`，main 可达的每个旧 commit 都必须得到非零新 SHA；旧、新 commit 列均无重复。只记录受影响 commit 数、首次旧/新 SHA、受影响 refs；不得输出 blob 内容。
 
@@ -196,7 +196,7 @@ commit map 必须包含 `$oldMain -> $newMain`，main 可达的每个旧 commit 
 - Consumes: `$oldMain`、`$newMain`、`$oldLegacyBranch`、全绿 mirror。
 - Produces: 两个远端 main 等于 `$newMain`，旧 GitHub 分支删除，两个 fresh clone 历史扫描通过。
 
-- [ ] **Step 1: 更新前重新核对租约**
+- [x] **Step 1: 更新前重新核对租约**
 
 ```powershell
 git ls-remote origin refs/heads/main refs/heads/task/14-final-evidence
@@ -205,7 +205,7 @@ git ls-remote nju refs/heads/main
 
 Expected: 三个值逐字等于 Task 2 记录；任何变化停止。
 
-- [ ] **Step 2: 用明确租约更新 GitHub main**
+- [x] **Step 2: 用明确租约更新 GitHub main**
 
 从 bare mirror 推送：
 
@@ -215,7 +215,7 @@ git push --force-with-lease="refs/heads/main:$oldMain" https://github.com/01w-01
 
 Expected: GitHub main 等于 `$newMain`。
 
-- [ ] **Step 3: 用明确租约删除旧 GitHub 分支**
+- [x] **Step 3: 用明确租约删除旧 GitHub 分支**
 
 ```powershell
 git push --force-with-lease="refs/heads/task/14-final-evidence:$oldLegacyBranch" https://github.com/01w-01/SE-agent.git :refs/heads/task/14-final-evidence
@@ -223,11 +223,11 @@ git push --force-with-lease="refs/heads/task/14-final-evidence:$oldLegacyBranch"
 
 Expected: `ls-remote` 不再返回该分支。
 
-- [ ] **Step 4: 从 GitHub fresh clone验证**
+- [x] **Step 4: 从 GitHub fresh clone验证**
 
 clone 到 `$cleanupRoot/verify-github`，核对 HEAD=`$newMain`，运行当前树扫描、历史扫描、全量 pytest、Ruff。全部通过后才继续 NJU。
 
-- [ ] **Step 5: 用专用 SSH 密钥和明确租约更新 NJU main**
+- [x] **Step 5: 用专用 SSH 密钥和明确租约更新 NJU main**
 
 使用临时 known_hosts 文件与 `id_ed25519_nju_git`，执行：
 
@@ -237,7 +237,7 @@ git push --force-with-lease="refs/heads/main:$oldMain" git@git.nju.edu.cn:wyl510
 
 Expected: NJU main 等于 `$newMain`；临时 known_hosts 文件在 finally 删除。
 
-- [ ] **Step 6: 从 NJU fresh clone验证**
+- [x] **Step 6: 从 NJU fresh clone验证**
 
 使用同一专用 SSH 配置 clone 到 `$cleanupRoot/verify-nju`，核对 HEAD=`$newMain`，运行当前树扫描与历史扫描。Expected: exit 0。
 
@@ -250,11 +250,11 @@ Expected: NJU main 等于 `$newMain`；临时 known_hosts 文件在 finally 删�
 - Consumes: 两个远端已验证的新 main、bundle、当前本地 old main。
 - Produces: 根仓库 main/remote-tracking refs 均为 `$newMain`，旧历史不可达。
 
-- [ ] **Step 1: 再次验证本地未提交范围**
+- [x] **Step 1: 再次验证本地未提交范围**
 
 Expected: 只有三份指定未跟踪文件；无 tracked 修改、额外 worktree、分支或 tag。否则停止。
 
-- [ ] **Step 2: 以旧 SHA 条件原子移动本地 main**
+- [x] **Step 2: 以旧 SHA 条件原子移动本地 main**
 
 ```powershell
 git update-ref refs/heads/main $newMain $oldMain
@@ -264,7 +264,7 @@ git update-ref refs/remotes/nju/main $newMain $oldMain
 
 Expected: 三条 ref 均等于 `$newMain`；工作树因 tree 相同保持无 tracked diff，三份进度文件仍存在。
 
-- [ ] **Step 3: 清除旧 refs、reflog 与不可达对象**
+- [x] **Step 3: 清除旧 refs、reflog 与不可达对象**
 
 先列出所有本地 refs并确认没有旧 SHA或未知引用，再执行：
 
@@ -275,7 +275,7 @@ git gc --prune=now
 
 Expected: `git fsck --unreachable --no-reflogs` 不列出旧敏感提交；历史扫描 exit 0。
 
-- [ ] **Step 4: 在当前根仓库重跑门禁**
+- [x] **Step 4: 在当前根仓库重跑门禁**
 
 运行当前树扫描、历史扫描、全量 pytest、Ruff和 `git status --short --branch`。Expected: 全绿且只列三份未跟踪进度文件。
 
@@ -294,23 +294,23 @@ Expected: `git fsck --unreachable --no-reflogs` 不列出旧敏感提交；历�
 - Consumes: commit map、`$oldMain/$newMain`、双远端 fresh-clone证据。
 - Produces: 不引用旧 commit token 的审计文档、普通 PR、最新双端绿色 CI。
 
-- [ ] **Step 1: 创建新 worktree和证据分支**
+- [x] **Step 1: 创建新 worktree和证据分支**
 
 从 `$newMain` 创建 `fix/history-cleanup-evidence` 与独立 worktree；基线历史扫描必须 exit 0。
 
-- [ ] **Step 2: 机械更新旧 SHA 引用**
+- [x] **Step 2: 机械更新旧 SHA 引用**
 
 读取 commit map，对所有 Git 跟踪的 Markdown 执行两类 token 边界替换：完整 40 位旧 SHA → 新 SHA；唯一七位旧前缀 → 对应新 SHA七位前缀。零映射只允许已明确删除的旧分支独有提交；不得替换非 commit 哈希。
 
-验证：搜索 commit map 中全部非零旧 SHA的完整值与唯一七位前缀，受版本控制 Markdown 中均无残留；PR URL/编号不变。
+验证：除 `docs/evidence/history-rewrite.md` 为审计而明确记录的旧 main 完整 SHA 外，搜索 commit map 中全部非零旧 SHA的完整值与唯一七位前缀，受版本控制 Markdown 中均无残留；PR URL/编号不变。
 
-- [ ] **Step 3: 写入历史重写证据**
+- [x] **Step 3: 写入历史重写证据**
 
 `history-rewrite.md` 只记录日期、工具版本、旧/新 main SHA、受影响 commit 数、tree 等价、扫描/测试结果、GitHub/NJU fresh clone结果、旧分支删除和 GitHub Support边界，不记录 Key或 blob内容。
 
 同步将 Release 历史扫描门禁从 FAIL 改为 PASS；保持干净 Windows、WebUI 有意偏离及 tag/Release 未运行。
 
-- [ ] **Step 4: 验证并提交证据分支**
+- [x] **Step 4: 验证并提交证据分支**
 
 运行两个扫描、全量 pytest、Ruff、Markdown旧 SHA检查和 diff check。提交：
 

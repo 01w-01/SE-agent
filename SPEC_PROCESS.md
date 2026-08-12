@@ -9,7 +9,7 @@
 - 课程原文：`通用要求.md`、`AI4SE_Final_Project_A_Coding_Agent_Harness.md`；
 - 第 1–18 轮主对话及 `docs/LOG.md`；
 - brainstorming 设计依据：`docs/superpowers/specs/2026-08-08-coding-agent-harness-demo-design.md`；
-- Git 提交 `77da924`、`b773647`；
+- Git 提交 `938b1b8`、`521e990`；
 - 2026-08-08 完成的正式 `SPEC.md`。
 
 本文件是持续更新的过程证据。PLAN 尚未获准生成，陌生智能体冷启动也尚未进入可执行门禁；对应状态见 §8，而不是伪造已完成记录。
@@ -145,12 +145,12 @@ brainstorming 主要推动了以下问题从模糊想法变成可验证决定：
 | Windows CLI | PyInstaller 发行物、GitLab CI、GitHub Release、全新机器路径 |
 | “探索 demo”限制 | 正式课程过程、学术诚信、风险、冲突与有意偏离 |
 
-原设计提交 `b773647` 保留为过程证据，但不替代 `SPEC.md`。
+原设计提交 `521e990` 保留为过程证据，但不替代 `SPEC.md`。
 
 ## 7. 当前冲突的过程结论
 
 - WebUI：首版坚持纯 CLI，但核心入口与终端解耦，允许未来新增 WebUI；当前仍未实际满足课程 WebUI URL 项。
-- 凭据历史：提交 `77da924` 已含临时 Key；用户接受当前私有阶段风险且不重写历史，因此公开发布/正式提交仍不合规。
+- 凭据历史：提交 `938b1b8` 已含临时 Key；用户接受当前私有阶段风险且不重写历史，因此公开发布/正式提交仍不合规。
 - Git 工作流：现有历史留在 `main`；正式编码开始采用 branch + worktree + PR，此项此前偏离已解决。
 - 仓库定位：早期探索表述已被正式定位覆盖，但历史记录不删除，以展示需求演化。
 
@@ -196,7 +196,7 @@ brainstorming 主要推动了以下问题从模糊想法变成可验证决定：
 
 - 智能体类型：Claude Code 2.1.226，与主开发智能体 Codex 不同；
 - 隔离位置：`D:\Codes\FBW-worktrees\cold-start-claude`；
-- 分支：`cold-start/claude-spec-plan`，基于 `51a849d`；
+- 分支：`cold-start/claude-spec-plan`，基于 `6f7bcba`；
 - worktree 仅由 uv 创建了被忽略的 `.venv`，Git 跟踪文件保持干净；
 - 基线能导入现有 `openai`，但旧原型尚未声明 pytest，因此 `python -m pytest` 以“No module named pytest”失败。这是 Task 1 将修复的已知起点，不是冷启动实现回归。
 
@@ -260,10 +260,10 @@ brainstorming 主要推动了以下问题从模糊想法变成可验证决定：
 
 ### 10.8 重启恢复检查与集中修订批准
 
-- 电脑重启后先做恢复审计：`main` 仍指向集中修订提交 `e09cb62`，冷启动分支仍指向 `b04511a`，Task 1/2 的未提交文件与删除记录完整，两个 Git 目录均无 `index.lock`，也没有遗留 Claude、uv 或 Python 任务；
+- 电脑重启后先做恢复审计：`main` 仍指向集中修订提交 `0355702`，冷启动分支仍指向 `e03dc7e`，Task 1/2 的未提交文件与删除记录完整，两个 Git 目录均无 `index.lock`，也没有遗留 Claude、uv 或 Python 任务；
 - 主 Codex 在保留现场上重新运行全量测试、ruff 和正常路径凭据扫描，结果仍为 `19 passed`、`All checks passed!`、扫描退出 `0`，证明重启没有破坏既有冷启动产物或验证环境；
 - 用户明确表示：若恢复检查无影响，即批准集中修订后的 `PLAN.md`。上述条件已满足，因此本轮将 Gate 4 标记完成，不再重复索取批准；
-- 该批准覆盖 `e09cb62` 中的 fail-closed 扫描、模型深度不可变、Action 必填字段、固定签名、Protocol 边界和 JSONL 转换边界。它不代表 Gate 2 已通过，也不授权提交或合并冷启动代码；下一步仍须让陌生 Claude 先观察新增测试失败，再修复并接受独立复审。
+- 该批准覆盖 `0355702` 中的 fail-closed 扫描、模型深度不可变、Action 必填字段、固定签名、Protocol 边界和 JSONL 转换边界。它不代表 Gate 2 已通过，也不授权提交或合并冷启动代码；下一步仍须让陌生 Claude 先观察新增测试失败，再修复并接受独立复审。
 
 ### 10.9 集中修订复验与 Gate 2 完成
 
