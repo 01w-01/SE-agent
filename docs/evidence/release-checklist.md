@@ -38,7 +38,7 @@
 | 代码签名 | NOT PASS | `Get-AuthenticodeSignature` 为 `NotSigned`；未从 Explorer 启动，因此没有 SmartScreen 行为证据 |
 | 学校真实 API | PASS | 目标 hostname `njusehub.info`、model `deepseek-v4-flash`。用户隐藏录入凭据；兼容性修复后 RunResult 为 `COMPLETED`、2 轮、仅修改 `clamp.py`、rollback complete，独立 pytest `3 passed`。未记录 Key、请求头、完整 prompt 或响应正文；最终 `configured=False`，一次性临时项目已删除 |
 | 干净 Windows 10/11 x64 | BLOCKED | 本机已有项目 Python/uv，不能作为干净新机；未验证 SmartScreen、exe 凭据 set/status/clear 或真实任务 |
-| GitLab CI 最后一次 pass | PASS | NJU GitLab [Pipeline #320523](https://git.nju.edu.cn/wyl510/se-agent/-/pipelines/320523)；`main@17554b3`；`unit-test` 绿色 passed；详见 `ci-last-pass.md` |
+| GitLab CI 最后一次 pass | PASS | NJU GitLab [Pipeline #320523](https://git.nju.edu.cn/wyl510/se-agent/-/pipelines/320523)；Pipeline 当时记录原 SHA `762b738`（内容映射到重写后 `17554b3`，但该 Pipeline 未在新 SHA 重跑）；`unit-test` 绿色 passed；详见 `ci-last-pass.md` |
 | 历史秘密扫描 / AC-24 | PASS | 精确重写 120 个提交并增加合同过渡提交；GitHub/NJU fresh clone 的 `pwsh -NoProfile -File scripts/scan-history.ps1` 均 exit 0、无输出；当前规范 main 为 `9cd6cb5` |
 | WebUI 最终清单项 | BLOCKED | 仓库明确只有 CLI，未找到课程方书面豁免；**WebUI 最终清单项未满足** |
 | tag / Release | NOT RUN | 上述强制门禁未全部通过，按 PLAN 禁止发布 |
