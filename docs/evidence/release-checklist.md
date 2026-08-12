@@ -8,9 +8,9 @@
 
 增量代码与真实 API 复验基线：`bd67e11`（包含工具调用兼容实现；后续仅修正文档证据）
 
-结论：**READY FOR PURE-CLI RELEASE；COURSE WEBUI DEVIATION**
+结论：**RELEASED v0.1.0；COURSE WEBUI DEVIATION**
 
-用户于 2026-08-13 批准纯 CLI `v0.1.0` 软件发布；WebUI 不提供，课程 WebUI 项仍未满足。构建、exe 与 SHA 行仍对应原始基线；离线测试、Ruff、当前树扫描和真实 API 行已在增量基线重新验证。未创建 tag、GitHub Release 或其他公开发布物，tag/Release 为待执行。
+用户于 2026-08-13 批准并完成纯 CLI `v0.1.0` 软件发布；WebUI 不提供，课程 WebUI 项仍未满足。构建、exe 与 SHA 行仍对应原始基线；离线测试、Ruff、当前树扫描和真实 API 行已在增量基线重新验证。正式 [Release v0.1.0](https://github.com/01w-01/SE-agent/releases/tag/v0.1.0) 已由成功工作流生成；独立下载复核见 [发布证据](release-v0.1.0.md)。
 
 ## 环境与版本
 
@@ -42,7 +42,7 @@
 | GitLab CI 最后一次 pass | PASS | NJU GitLab [Pipeline #320523](https://git.nju.edu.cn/wyl510/se-agent/-/pipelines/320523)；Pipeline 当时记录原 SHA `762b738`（内容映射到重写后 `17554b3`，但该 Pipeline 未在新 SHA 重跑）；`unit-test` 绿色 passed；详见 `ci-last-pass.md` |
 | 历史秘密扫描 / AC-24 | PASS | 精确重写 120 个提交并增加合同过渡提交；GitHub/NJU fresh clone 的 `pwsh -NoProfile -File scripts/scan-history.ps1` 均 exit 0、无输出；当前规范 main 为 `9cd6cb5` |
 | WebUI 最终清单项 | COURSE WEBUI DEVIATION | 仓库明确只有 CLI；**WebUI 最终清单项未满足**，但用户于 2026-08-13 批准其不阻断纯 CLI 软件发布 |
-| tag / Release | 待执行 | 已完成发布准备；尚未创建 tag 或 GitHub Release，创建前不得声称 Release URL 已存在 |
+| tag / Release | PASS | annotated tag `v0.1.0`（对象 `b602450f861a078afcf291ec9a4412670f04895a`）指向 `f61bf48684ca0ada9de8ac00644ff7d2e68dc60b`；[Run 31624847385](https://github.com/01w-01/SE-agent/actions/runs/31624847385) 的 `unit-test`、`release` 均成功并生成正式 Release |
 
 ## 非阻断限制与课程偏离
 
@@ -50,4 +50,4 @@
 2. 签名：二进制仍未签名，用户应在 SHA-256 校验后按组织安全政策处理 SmartScreen 提示。
 3. 课程 WebUI：不实现 WebUI；该课程项仍未满足，作为已批准的 `COURSE WEBUI DEVIATION` 保留。
 
-上述限制不阻断已批准的纯 CLI `v0.1.0` 软件发布；tag/Release 仍待后续执行。
+上述限制不阻断已完成的纯 CLI `v0.1.0` 软件发布；课程 WebUI 偏离与学生反思责任仍如实保留。
