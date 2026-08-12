@@ -29,25 +29,25 @@
 - Consumes: `scripts/build.ps1` 生成的 `dist/fbw-harness.exe` 与 `.sha256`。
 - Produces: `scripts/verify-clean-windows.ps1 -Artifact <exe> -Checksum <sha> -Summary <txt>`；成功 exit 0，失败抛固定验收错误。
 
-- [ ] **Step 1: 写合同 RED**
+- [x] **Step 1: 写合同 RED**
 
 在 `test_distribution_files.py` 新增测试，要求独立 workflow：仅 `workflow_dispatch`、`contents: read`、调用 build/verify、上传三项 artifact、不含 release action；并要求验收脚本包含 SHA、受限 PATH、`--help`、`demo all`、`credential status` 与临时目录 finally 清理。
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
 Run: `uv run --project mini-harness pytest mini-harness/tests/test_distribution_files.py -q`
 
 Expected: FAIL，缺少 workflow/验收脚本。
 
-- [ ] **Step 3: 实现最小验收脚本**
+- [x] **Step 3: 实现最小验收脚本**
 
 脚本校验输入文件、解析两列 SHA、复制 artifact 到唯一 `$env:RUNNER_TEMP/fbw-clean-<guid>`，以 `System.Diagnostics.ProcessStartInfo` 为每个命令设置受限 PATH 并捕获退出码；依次运行 `--help`、`demo all`、`credential status`，写固定摘要，finally 删除临时目录。输出不得包含命令完整 stdout/stderr 或环境变量。
 
-- [ ] **Step 4: 实现手动 workflow**
+- [x] **Step 4: 实现手动 workflow**
 
 `windows-latest` checkout `fetch-depth: 0`，setup-uv Python 3.13，运行双扫描、`build.ps1`、验收脚本，上传 `dist/fbw-harness.exe`、SHA 和摘要；只使用 `actions/checkout@v4`、`astral-sh/setup-uv@v6`、`actions/upload-artifact@v4`。
 
-- [ ] **Step 5: GREEN 与门禁**
+- [x] **Step 5: GREEN 与门禁**
 
 Run:
 
