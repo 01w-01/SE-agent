@@ -1,12 +1,16 @@
 # 最终发布验收清单
 
-验收时间：2026-08-11 23:11:26 +08:00
+原始验收时间：2026-08-11 23:11:26 +08:00
 
-验收基线：`cd2b0ef647e6be7072aeeca4bca8bb82ecde55e8`
+原始构建/发行物验收基线：`cd2b0ef647e6be7072aeeca4bca8bb82ecde55e8`
+
+增量复验日期：2026-08-12
+
+增量代码与真实 API 复验基线：`b8e4bc9`（包含工具调用兼容实现；后续仅修正文档证据）
 
 结论：**不可发布（NOT RELEASABLE）**
 
-任一强制门禁缺少通过证据都会阻断发布。本次只完成当前开发机上可安全执行的检查；未创建 tag、GitHub Release 或其他公开发布物。
+任一强制门禁缺少通过证据都会阻断发布。构建、exe 与 SHA 行仍对应原始基线；离线测试、Ruff、当前树扫描和真实 API 行已在增量基线重新验证。未创建 tag、GitHub Release 或其他公开发布物。
 
 ## 环境与版本
 
@@ -23,16 +27,16 @@
 
 | 门禁 | 状态 | 客观证据 |
 |---|---|---|
-| 离线全量测试 | PASS | 控制器复验 `uv run --project mini-harness pytest -q`，exit 0；`750 passed, 1 skipped in 123.27s`。随后构建内再次为 `750 passed, 1 skipped in 125.24s` |
-| Ruff | PASS | `uv run --project mini-harness ruff check mini-harness/src mini-harness/tests`，exit 0；`All checks passed!` |
+| 离线全量测试 | PASS（增量复验） | 增量基线运行 `uv run --project mini-harness pytest -q`，exit 0；`754 passed, 1 skipped in 236.63s`。原始基线及构建内证据均为 `750 passed, 1 skipped` |
+| Ruff | PASS（增量复验） | 增量基线运行 `uv run --project mini-harness ruff check mini-harness`，exit 0；`All checks passed!` |
 | 三项离线 demo | PASS | `pwsh -NoProfile -File scripts/demo.ps1`，exit 0；guardrail、feedback、no-progress 均为 PASS |
-| 当前树秘密扫描 | PASS | `pwsh -NoProfile -File scripts/scan-current-tree.ps1`，exit 0，无命中输出 |
+| 当前树秘密扫描 | PASS（增量复验） | 增量基线运行 `pwsh -NoProfile -File scripts/scan-current-tree.ps1`，exit 0，无命中输出 |
 | Windows 单文件构建 | PASS（仅当前机） | `pwsh -NoProfile -File scripts/build.ps1`，exit 0；PyInstaller 6.22.0 / Python 3.13.13 |
 | exe SHA-256 | PASS（仅当前机） | 最新构建为 `57e2393276dcf97d15ee3cf6094190274d895987062955b76b41ddd170701670`；20,447,552 bytes；`.sha256` 与 `Get-FileHash` 一致。该值校验本次产物，不声明不同构建之间字节级可复现 |
 | exe `--help` | PASS（仅当前机） | exit 0；命令帮助成功列出 run、credential、memory、demo |
 | exe `demo all` | PASS（仅当前机） | exit 0；三项 demo 均为 PASS |
 | 代码签名 | NOT PASS | `Get-AuthenticodeSignature` 为 `NotSigned`；未从 Explorer 启动，因此没有 SmartScreen 行为证据 |
-| 学校真实 API | BLOCKED | 目标 hostname `njusehub.info`、model `deepseek-v4-flash`。CredentialStore 为 `configured=False`；自动凭据提取/联网被安全审批拒绝，未完成必要的人工隐藏输入，未发起请求；无 RunResult、修改路径或测试摘要。临时项目已删除，最终仍为 `configured=False` |
+| 学校真实 API | PASS | 目标 hostname `njusehub.info`、model `deepseek-v4-flash`。用户隐藏录入凭据；兼容性修复后 RunResult 为 `COMPLETED`、2 轮、仅修改 `clamp.py`、rollback complete，独立 pytest `3 passed`。未记录 Key、请求头、完整 prompt 或响应正文；最终 `configured=False`，一次性临时项目已删除 |
 | 干净 Windows 10/11 x64 | BLOCKED | 本机已有项目 Python/uv，不能作为干净新机；未验证 SmartScreen、exe 凭据 set/status/clear 或真实任务 |
 | GitLab CI 最后一次 pass | PASS | NJU GitLab [Pipeline #320523](https://git.nju.edu.cn/wyl510/se-agent/-/pipelines/320523)；`main@762b738`；`unit-test` 绿色 passed；详见 `ci-last-pass.md` |
 | 历史秘密扫描 / AC-24 | FAIL（预期阻断） | `pwsh -NoProfile -File scripts/scan-history.ps1`，exit 1；只输出 commit/path 元数据，共 34 行、18 个 commit、4 个路径，包含 `77da924`，未输出匹配内容；未重写历史 |
@@ -41,9 +45,8 @@
 
 ## 发布阻塞项
 
-1. 由人工通过隐藏输入配置临时凭据后，在 OS 临时项目完成一次真实 API 受控修复，并在 `finally` 清除凭据；当前未执行。
-2. 在未安装本项目 Python/uv 的干净 Windows 10/11 x64 机器完成 exe、SHA、SmartScreen、凭据生命周期、demo 和真实任务验收。
-3. 合规处理历史凭据并使历史扫描退出 0；需用户另行明确授权，当前不得改写历史。
-4. 交付 WebUI，或取得课程方允许纯 CLI 的书面豁免。
+1. 在未安装本项目 Python/uv 的干净 Windows 10/11 x64 机器完成 exe、SHA、SmartScreen、凭据生命周期、demo 和真实任务验收。
+2. 合规处理历史凭据并使历史扫描退出 0；需用户另行明确授权，当前不得改写历史。
+3. 交付 WebUI，或取得课程方允许纯 CLI 的书面豁免。
 
-只有四项全部解决并重新执行所有门禁后，才可考虑创建 tag/Release。
+只有三项全部解决并重新执行所有门禁后，才可考虑创建 tag/Release。

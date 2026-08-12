@@ -1615,11 +1615,11 @@ Expected: 全部退出 `0`；把命令、版本、通过数量和产物 SHA-256 
 
 **验收记录（2026-08-11）：** 四条命令均退出 `0`；全量测试 `750 passed, 1 skipped`，Ruff 与三项 demo 通过，构建产物 SHA-256 已复核，详见 `docs/evidence/release-checklist.md`。
 
-- [ ] **Step 2: 手动真实 API 冒烟**
+- [x] **Step 2: 手动真实 API 冒烟**
 
 通过 `fbw-harness credential set` 隐藏录入学校 Key，status 不回显；对专用临时 Python 项目运行一次受控修复。证据只记录模型、Base URL 主机名、RunResult、修改相对路径和测试摘要，不记录 Key、请求头或完整 prompt。
 
-**未完成：** CredentialStore 最终状态为 `configured=False`。自动从 Git 历史读取凭据并联网的操作被安全审批拒绝，且本次没有完成必要的人工隐藏输入；未发起请求，因而没有 RunResult、修改路径或真实 API 测试摘要。临时项目已删除，CredentialStore 无残留。
+**验收记录（2026-08-12）：** 用户通过隐藏输入配置 CredentialStore。首次真实运行以固定 `api_failure` 安全停止，0 文件修改且回滚完整；脱敏诊断证明网关支持 OpenAI chat/tools，但 `tool_choice="required"` 返回 HTTP 400，省略该参数可返回工具调用。经用户批准，客户端采用“默认 required；仅精确 400 时当前实例降级一次并记忆 tools-only”的兼容方案，解析器仍强制恰好一个合法工具调用。修复后对一次性 clamp 项目运行 `deepseek-v4-flash`，2 轮内返回 `COMPLETED`，仅修改 `clamp.py`，独立 pytest 为 `3 passed`，未记录 Key、请求头或模型响应正文。最终 `credential status` 为 `configured=False`，一次性 `fbw-real-api-*` 临时项目已在严格路径核对后删除。
 
 - [ ] **Step 3: 在干净 Windows 10/11 x64 环境验证发行物**
 
@@ -1651,7 +1651,7 @@ Expected under current accepted history: exit `1`，只显示 `77da924` 相关 c
 
 仅当离线测试、真实 API、新机、GitLab CI、当前树扫描、历史扫描以及 WebUI 例外/实现均有通过证据时，创建版本 tag 并让 GitHub Actions 发布。任一项失败则保留本地可运行产物，但不创建公开 Release。
 
-**未完成且禁止发布：** GitLab CI 已通过；真实 API、干净新机、历史零凭据和 WebUI 门禁仍未满足，未创建 tag 或 Release。
+**未完成且禁止发布：** GitLab CI 与学校真实 API 冒烟已通过；干净新机、历史零凭据和 WebUI 门禁仍未满足，未创建 tag 或 Release。
 
 - [x] **Step 8: 更新过程证据并提交**
 

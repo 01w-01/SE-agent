@@ -655,7 +655,7 @@ def test_llm_decide_retries_server_errors(status: int) -> None:
     assert len(sdk.chat.completions.calls) == 2
 
 
-@pytest.mark.parametrize("status", [400, 401, 403, 404])
+@pytest.mark.parametrize("status", [401, 403, 404])
 def test_llm_decide_does_not_retry_permanent_client_errors(status: int) -> None:
     sdk = _FakeSDK([_HTTPFailure(status)])
 
@@ -663,6 +663,63 @@ def test_llm_decide_does_not_retry_permanent_client_errors(status: int) -> None:
         OpenAICompatibleClient(client=sdk, model="model").decide([], [])
 
     assert len(sdk.chat.completions.calls) == 1
+
+
+def test_llm_falls_back_without_tool_choice_after_required_http_400() -> None:
+    sdk = _FakeSDK([_HTTPFailure(400), _sdk_response(("list_files", "{}"))])
+    client = OpenAICompatibleClient(client=sdk, model="model")
+
+    result = client.decide([], [])
+
+    assert result.tool_calls == (RawToolCall("list_files", "{}"),)
+    assert sdk.chat.completions.calls == [
+        {"model": "model", "messages": [], "tools": [], "tool_choice": "required"},
+        {"model": "model", "messages": [], "tools": []},
+    ]
+
+
+def test_llm_remembers_tools_only_mode_after_compatibility_fallback() -> None:
+    sdk = _FakeSDK(
+        [
+            _HTTPFailure(400),
+            _sdk_response(("list_files", "{}")),
+            _sdk_response(("finish", '{"reason":"done"}')),
+        ]
+    )
+    client = OpenAICompatibleClient(client=sdk, model="model")
+
+    client.decide([], [])
+    result = client.decide([], [])
+
+    assert result.tool_calls == (RawToolCall("finish", '{"reason":"done"}'),)
+    assert ["tool_choice" in call for call in sdk.chat.completions.calls] == [
+        True,
+        False,
+        False,
+    ]
+
+
+def test_new_llm_client_starts_in_required_mode_after_another_client_falls_back() -> None:
+    first_sdk = _FakeSDK([_HTTPFailure(400), _sdk_response(("list_files", "{}"))])
+    OpenAICompatibleClient(client=first_sdk, model="model").decide([], [])
+    second_sdk = _FakeSDK([_sdk_response(("list_files", "{}"))])
+
+    OpenAICompatibleClient(client=second_sdk, model="model").decide([], [])
+
+    assert second_sdk.chat.completions.calls == [
+        {"model": "model", "messages": [], "tools": [], "tool_choice": "required"}
+    ]
+
+
+def test_llm_maps_second_http_400_without_repeating_compatibility_fallback() -> None:
+    sdk = _FakeSDK([_HTTPFailure(400), _HTTPFailure(400)])
+
+    with pytest.raises(LLMDecisionError, match=r"^LLM decision failed$") as caught:
+        OpenAICompatibleClient(client=sdk, model="model").decide([], [])
+
+    assert len(sdk.chat.completions.calls) == 2
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
 
 
 def test_llm_decide_stops_after_three_transient_attempts_without_sleeping() -> None:
