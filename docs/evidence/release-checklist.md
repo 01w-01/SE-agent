@@ -37,7 +37,8 @@
 | exe `demo all` | PASS（仅当前机） | exit 0；三项 demo 均为 PASS |
 | 代码签名 | NOT PASS | `Get-AuthenticodeSignature` 为 `NotSigned`；未从 Explorer 启动，因此没有 SmartScreen 行为证据 |
 | 学校真实 API | PASS | 目标 hostname `njusehub.info`、model `deepseek-v4-flash`。用户隐藏录入凭据；兼容性修复后 RunResult 为 `COMPLETED`、2 轮、仅修改 `clamp.py`、rollback complete，独立 pytest `3 passed`。未记录 Key、请求头、完整 prompt 或响应正文；最终 `configured=False`，一次性临时项目已删除 |
-| 干净 Windows 10/11 x64 | BLOCKED | 本机已有项目 Python/uv，不能作为干净新机；未验证 SmartScreen、exe 凭据 set/status/clear 或真实任务 |
+| GitHub hosted 全新 Windows EXE | PASS | [Run 31616841988](https://github.com/01w-01/SE-agent/actions/runs/31616841988)，`main@ab3a74f`；构建、SHA、受限 PATH、`--help`、`demo all`、两次未配置 `credential status` 与三文件 artifact 全绿 |
+| 实体 Windows 10/11 人工体验 | BLOCKED | hosted runner 不等同于实体用户机器；未验证 Explorer SmartScreen、交互 `credential set/clear` 或在同机执行真实任务 |
 | GitLab CI 最后一次 pass | PASS | NJU GitLab [Pipeline #320523](https://git.nju.edu.cn/wyl510/se-agent/-/pipelines/320523)；Pipeline 当时记录原 SHA `762b738`（内容映射到重写后 `17554b3`，但该 Pipeline 未在新 SHA 重跑）；`unit-test` 绿色 passed；详见 `ci-last-pass.md` |
 | 历史秘密扫描 / AC-24 | PASS | 精确重写 120 个提交并增加合同过渡提交；GitHub/NJU fresh clone 的 `pwsh -NoProfile -File scripts/scan-history.ps1` 均 exit 0、无输出；当前规范 main 为 `9cd6cb5` |
 | WebUI 最终清单项 | BLOCKED | 仓库明确只有 CLI，未找到课程方书面豁免；**WebUI 最终清单项未满足** |
@@ -45,7 +46,7 @@
 
 ## 发布阻塞项
 
-1. 在未安装本项目 Python/uv 的干净 Windows 10/11 x64 机器完成 exe、SHA、SmartScreen、凭据生命周期、demo 和真实任务验收。
+1. 如要求实体用户体验证据，在干净 Windows 10/11 x64 机器补充 Explorer SmartScreen、交互凭据生命周期和真实任务；核心离线 EXE 已有 hosted clean Windows PASS。
 2. 交付 WebUI，或取得课程方允许纯 CLI 的书面豁免。
 
 只有两项全部解决并重新执行所有门禁后，才可考虑创建 tag/Release。

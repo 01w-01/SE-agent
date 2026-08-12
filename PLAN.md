@@ -1627,6 +1627,8 @@ Expected: 全部退出 `0`；把命令、版本、通过数量和产物 SHA-256 
 
 **未完成：** 本次机器是已安装 Python/uv 的现有 Windows 11 开发机。当前机 exe `--help`、`demo all` 和 SHA-256 复核只能作为本地冒烟，不能替代干净 Windows 10/11 x64 证据；SmartScreen、凭据生命周期和真实任务均未在目标机验证。
 
+**增量验收（2026-08-13）：** GitHub hosted `windows-latest` 全新 runner 在 [Run 31616841988](https://github.com/01w-01/SE-agent/actions/runs/31616841988) 对 `main@ab3a74f` 完成构建、SHA、受限运行 PATH、EXE `--help`、`demo all`、两次未配置 `credential status` 与三文件 artifact，全部绿色。该结果将“云端全新 Windows 离线 EXE”转为 PASS；Step 3 仍不整体勾选，因为 Explorer SmartScreen、实体 Windows 10/11、交互 `credential set/clear` 和真实任务未在同一目标机覆盖。
+
 - [x] **Step 4: 获取最后一次 GitLab CI pass 证据**
 
 保存 pipeline URL、commit SHA、`unit-test` job 名和 pass 时间到 `docs/evidence/ci-last-pass.md`。若无远端或 CI 未 pass，本 task 保持未完成，不用本地结果冒充 CI。
