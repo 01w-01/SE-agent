@@ -32,7 +32,7 @@
 | exe `--help` | PASS（仅当前机） | exit 0；命令帮助成功列出 run、credential、memory、demo |
 | exe `demo all` | PASS（仅当前机） | exit 0；三项 demo 均为 PASS |
 | 代码签名 | NOT PASS | `Get-AuthenticodeSignature` 为 `NotSigned`；未从 Explorer 启动，因此没有 SmartScreen 行为证据 |
-| 学校真实 API | BLOCKED | 目标 hostname `njusehub.info`、model `deepseek-v4-flash`。CredentialStore 为 `configured=False`；自动凭据提取/联网被安全审批拒绝，未完成必要的人工隐藏输入，未发起请求；无 RunResult、修改路径或测试摘要。临时项目已删除，最终仍为 `configured=False` |
+| 学校真实 API | PASS | 目标 hostname `njusehub.info`、model `deepseek-v4-flash`。用户隐藏录入凭据；兼容性修复后 RunResult 为 `COMPLETED`、2 轮、仅修改 `clamp.py`、rollback complete，独立 pytest `3 passed`。未记录 Key、请求头、完整 prompt 或响应正文；最终 `configured=False`，一次性临时项目已删除 |
 | 干净 Windows 10/11 x64 | BLOCKED | 本机已有项目 Python/uv，不能作为干净新机；未验证 SmartScreen、exe 凭据 set/status/clear 或真实任务 |
 | GitLab CI 最后一次 pass | PASS | NJU GitLab [Pipeline #320523](https://git.nju.edu.cn/wyl510/se-agent/-/pipelines/320523)；`main@762b738`；`unit-test` 绿色 passed；详见 `ci-last-pass.md` |
 | 历史秘密扫描 / AC-24 | FAIL（预期阻断） | `pwsh -NoProfile -File scripts/scan-history.ps1`，exit 1；只输出 commit/path 元数据，共 34 行、18 个 commit、4 个路径，包含 `77da924`，未输出匹配内容；未重写历史 |
@@ -41,9 +41,8 @@
 
 ## 发布阻塞项
 
-1. 由人工通过隐藏输入配置临时凭据后，在 OS 临时项目完成一次真实 API 受控修复，并在 `finally` 清除凭据；当前未执行。
-2. 在未安装本项目 Python/uv 的干净 Windows 10/11 x64 机器完成 exe、SHA、SmartScreen、凭据生命周期、demo 和真实任务验收。
-3. 合规处理历史凭据并使历史扫描退出 0；需用户另行明确授权，当前不得改写历史。
-4. 交付 WebUI，或取得课程方允许纯 CLI 的书面豁免。
+1. 在未安装本项目 Python/uv 的干净 Windows 10/11 x64 机器完成 exe、SHA、SmartScreen、凭据生命周期、demo 和真实任务验收。
+2. 合规处理历史凭据并使历史扫描退出 0；需用户另行明确授权，当前不得改写历史。
+3. 交付 WebUI，或取得课程方允许纯 CLI 的书面豁免。
 
-只有四项全部解决并重新执行所有门禁后，才可考虑创建 tag/Release。
+只有三项全部解决并重新执行所有门禁后，才可考虑创建 tag/Release。
