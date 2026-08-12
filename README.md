@@ -127,7 +127,7 @@ API Key 仅由 Windows Credential Manager 保存；CLI、配置、JSONL、记忆
 - PyInstaller 产物尚未代码签名，需处理 SmartScreen 提示并自行复核 SHA-256。
 - 路径与哈希检查不能消除本地恶意进程的 TOCTOU 风险。
 - 当前完整 Git 历史含用户接受的临时学校 API Key。`scripts/scan-history.ps1` 因此会退出 `1` 并阻断 tag/release；在历史被合规处理前，项目不具备发布就绪状态。
-- 最终验收时 Credential Manager 未由人工隐藏输入配置，因此没有发起学校真实 API 请求；也没有干净 Windows 目标机或 GitLab pipeline pass 证据，且课程方尚未书面豁免 WebUI。以上强制门禁均未满足，本仓库当前不可发布。
+- 最终验收时 Credential Manager 未由人工隐藏输入配置，因此没有发起学校真实 API 请求；也没有干净 Windows 目标机，且课程方尚未书面豁免 WebUI。NJU GitLab `unit-test` 已由 [Pipeline #320523](https://git.nju.edu.cn/wyl510/se-agent/-/pipelines/320523) 验证通过；其余强制门禁仍未满足，本仓库当前不可发布。
 
 ## 第三方依赖与许可证
 

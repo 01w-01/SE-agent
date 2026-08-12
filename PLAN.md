@@ -1627,11 +1627,11 @@ Expected: 全部退出 `0`；把命令、版本、通过数量和产物 SHA-256 
 
 **未完成：** 本次机器是已安装 Python/uv 的现有 Windows 11 开发机。当前机 exe `--help`、`demo all` 和 SHA-256 复核只能作为本地冒烟，不能替代干净 Windows 10/11 x64 证据；SmartScreen、凭据生命周期和真实任务均未在目标机验证。
 
-- [ ] **Step 4: 获取最后一次 GitLab CI pass 证据**
+- [x] **Step 4: 获取最后一次 GitLab CI pass 证据**
 
 保存 pipeline URL、commit SHA、`unit-test` job 名和 pass 时间到 `docs/evidence/ci-last-pass.md`。若无远端或 CI 未 pass，本 task 保持未完成，不用本地结果冒充 CI。
 
-**未完成：** Git 配置只有 GitHub `origin`，没有 GitLab remote、pipeline URL、pass 时间或可核实的 `unit-test` job 结果；见 `docs/evidence/ci-last-pass.md`。
+**验收记录（2026-08-12）：** 完整 `main@762b738` 已推送到 NJU GitLab；用户登录后确认 [Pipeline #320523](https://git.nju.edu.cn/wyl510/se-agent/-/pipelines/320523) 的 `unit-test` 为绿色 passed。证据见 `docs/evidence/ci-last-pass.md`。
 
 - [x] **Step 5: 执行已知会失败的历史凭据门禁**
 
@@ -1651,7 +1651,7 @@ Expected under current accepted history: exit `1`，只显示 `77da924` 相关 c
 
 仅当离线测试、真实 API、新机、GitLab CI、当前树扫描、历史扫描以及 WebUI 例外/实现均有通过证据时，创建版本 tag 并让 GitHub Actions 发布。任一项失败则保留本地可运行产物，但不创建公开 Release。
 
-**未完成且禁止发布：** 真实 API、干净新机、GitLab CI、历史零凭据和 WebUI 门禁均未满足；未创建 tag 或 Release。
+**未完成且禁止发布：** GitLab CI 已通过；真实 API、干净新机、历史零凭据和 WebUI 门禁仍未满足，未创建 tag 或 Release。
 
 - [x] **Step 8: 更新过程证据并提交**
 
