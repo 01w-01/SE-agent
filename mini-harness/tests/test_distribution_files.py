@@ -182,10 +182,14 @@ def test_clean_windows_acceptance_is_manual_read_only_and_never_releases() -> No
     assert "softprops/action-gh-release" not in workflow
     assert "contents: write" not in workflow
     assert "fbw-clean-windows-summary.txt" in workflow
+    assert "timeout-minutes: 30" in workflow
 
     for contract in (
         "Get-FileHash",
         "ProcessStartInfo",
+        "ReadToEndAsync",
+        "WaitForExit(120000)",
+        "Kill($true)",
         "System32",
         '"--help"',
         '"demo", "all"',

@@ -34,9 +34,18 @@ function Invoke-IsolatedExe([string]$Executable, [string[]]$Arguments, [string]$
     if (-not $process.Start()) {
         throw "clean Windows executable failed to start"
     }
-    $stdout = $process.StandardOutput.ReadToEnd()
-    $stderr = $process.StandardError.ReadToEnd()
-    $process.WaitForExit()
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+    if (-not $process.WaitForExit(120000)) {
+        try {
+            $process.Kill($true)
+            $null = $process.WaitForExit(5000)
+        }
+        catch { }
+        throw "clean Windows executable command timed out"
+    }
+    $stdout = $stdoutTask.GetAwaiter().GetResult()
+    $stderr = $stderrTask.GetAwaiter().GetResult()
     if ($process.ExitCode -ne 0) {
         throw "clean Windows executable command failed"
     }
