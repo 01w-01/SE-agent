@@ -370,6 +370,7 @@
 - TDD：新增测试在旧实现上 `4 failed`，证明 required 400 不降级、无实例记忆且第二请求未发生；最小实现后选择测试 `4 passed`，完整 LLM/context/parser 为 `124 passed`。默认仍 required；仅精确 400 时当前 client 同轮重发 tools-only 并记忆，新 client 恢复严格模式；其余状态和固定错误边界不变。
 - 真实闭环：一次性 clamp 项目基线 `2 failed, 1 passed`；修复后 `deepseek-v4-flash` 在 2 轮内返回 `COMPLETED`，仅修改 `clamp.py`，独立 pytest `3 passed`，回滚状态完整。
 - 清理与发布裁决：`credential clear` 后状态为 `configured=False`；一次性 `fbw-real-api-*` 目录经系统临时根、直接子目录和固定前缀三重核对后删除。真实 API 门禁转为 PASS；干净 Windows、历史零凭据和 WebUI 有意偏离仍阻断 tag/Release。
+- 独立审查：实现与测试 0 Critical、0 Important；证据清单最初沿用旧日期/基线却写入新 API PASS，被判 1 项 Important。修正为“原始构建/发行物基线 + 2026-08-12 增量代码/API 基线”，并明确哪些门禁在 `b8e4bc9` 重新执行，避免把旧 exe 证据冒充为新构建。
 
 ## 3. 当前关键决定
 

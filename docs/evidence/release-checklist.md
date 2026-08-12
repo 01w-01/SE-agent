@@ -1,12 +1,16 @@
 # 最终发布验收清单
 
-验收时间：2026-08-11 23:11:26 +08:00
+原始验收时间：2026-08-11 23:11:26 +08:00
 
-验收基线：`cd2b0ef647e6be7072aeeca4bca8bb82ecde55e8`
+原始构建/发行物验收基线：`cd2b0ef647e6be7072aeeca4bca8bb82ecde55e8`
+
+增量复验日期：2026-08-12
+
+增量代码与真实 API 复验基线：`b8e4bc9`（包含工具调用兼容实现；后续仅修正文档证据）
 
 结论：**不可发布（NOT RELEASABLE）**
 
-任一强制门禁缺少通过证据都会阻断发布。本次只完成当前开发机上可安全执行的检查；未创建 tag、GitHub Release 或其他公开发布物。
+任一强制门禁缺少通过证据都会阻断发布。构建、exe 与 SHA 行仍对应原始基线；离线测试、Ruff、当前树扫描和真实 API 行已在增量基线重新验证。未创建 tag、GitHub Release 或其他公开发布物。
 
 ## 环境与版本
 
@@ -23,10 +27,10 @@
 
 | 门禁 | 状态 | 客观证据 |
 |---|---|---|
-| 离线全量测试 | PASS | 控制器复验 `uv run --project mini-harness pytest -q`，exit 0；`750 passed, 1 skipped in 123.27s`。随后构建内再次为 `750 passed, 1 skipped in 125.24s` |
-| Ruff | PASS | `uv run --project mini-harness ruff check mini-harness/src mini-harness/tests`，exit 0；`All checks passed!` |
+| 离线全量测试 | PASS（增量复验） | 增量基线运行 `uv run --project mini-harness pytest -q`，exit 0；`754 passed, 1 skipped in 236.63s`。原始基线及构建内证据均为 `750 passed, 1 skipped` |
+| Ruff | PASS（增量复验） | 增量基线运行 `uv run --project mini-harness ruff check mini-harness`，exit 0；`All checks passed!` |
 | 三项离线 demo | PASS | `pwsh -NoProfile -File scripts/demo.ps1`，exit 0；guardrail、feedback、no-progress 均为 PASS |
-| 当前树秘密扫描 | PASS | `pwsh -NoProfile -File scripts/scan-current-tree.ps1`，exit 0，无命中输出 |
+| 当前树秘密扫描 | PASS（增量复验） | 增量基线运行 `pwsh -NoProfile -File scripts/scan-current-tree.ps1`，exit 0，无命中输出 |
 | Windows 单文件构建 | PASS（仅当前机） | `pwsh -NoProfile -File scripts/build.ps1`，exit 0；PyInstaller 6.22.0 / Python 3.13.13 |
 | exe SHA-256 | PASS（仅当前机） | 最新构建为 `57e2393276dcf97d15ee3cf6094190274d895987062955b76b41ddd170701670`；20,447,552 bytes；`.sha256` 与 `Get-FileHash` 一致。该值校验本次产物，不声明不同构建之间字节级可复现 |
 | exe `--help` | PASS（仅当前机） | exit 0；命令帮助成功列出 run、credential、memory、demo |
